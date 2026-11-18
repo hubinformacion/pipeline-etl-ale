@@ -6,10 +6,12 @@ Este archivo conserva el contexto y el plan de trabajo del agente. Las instrucci
 
 - Trabajar incrementalmente y centrarse en consola; Functions se valida más adelante.
 - Compartir instrucciones de ejecución y pruebas directamente en el chat, no en README.
+- Hacer commits al completar cambios coherentes y verificados, sin esperar recordatorios del usuario. No atribuir al agente la validación manual del usuario.
 - Mantener README como descripción breve del proyecto. No crear PLAN.md ni CONTEXTO.md separados; actualizar este archivo.
 - Aplicar Ponytail: cambio mínimo completo, sin dependencias ni abstracciones anticipadas. No instalar frameworks de pruebas por rutina.
 - Usar Context7 para documentación vigente de bibliotecas, SDK, APIs, CLI y servicios; resolver library ID antes de consultar.
-- Conservar convenciones y DLL de TI; no sustituir observabilidad sin validar.
+- Conservar convenciones y DLL de TI; observabilidad diferida al final por petición del usuario. No integrarla ahora.
+- No conservar scripts de comprobación Python ni crear suites de pruebas sin una necesidad acordada. El usuario pidió eliminar tests/console-check.py; ya fue retirado.
 - No incorporar servicios de memoria adicionales.
 
 # Contexto y decisiones vigentes
@@ -32,7 +34,7 @@ Extraer periódicamente datos de Alma/Analytics, Springshare/LibCal y Elogim/Mar
 
 ## Fechas solicitadas
 
-Alma: D−2; LibCal: D; Elogim: D−1. Interpretación provisional: un día calendario específico por origen, no un rango acumulado. America/Lima es propuesta, pendiente de confirmar junto con hora, campos y semántica de fecha de cada fuente.
+Alma: D−2; LibCal: D; Elogim: D−1. Interpretación provisional: un día calendario específico por origen, no un rango acumulado. America/Lima y un único día calendario por fuente fueron confirmados por el usuario. Hora y detalles de las fuentes restantes siguen pendientes. Alma ya tiene filtros y columnas confirmados.
 
 ## Pendientes de producto
 
@@ -53,8 +55,14 @@ Avanzar una etapa a la vez, con cambios pequeños. Antes de cada etapa explicar 
 - [x] Solución y cinco proyectos creados; template sustituido conservando referencias TI.
 - [x] Ejemplo compartido ejecutado desde consola; sin acceso externo.
 - [x] Guía de ejecución centrada en consola y contexto persistidos.
-- [ ] Etapa 1: recorrido guiado y depuración de consola.
-- [ ] Etapas 2–8: pendientes.
+- [x] Recorrido básico completado; el usuario pidió avanzar directamente. Depuración diferida.
+- [x] Etapa 2: consola calcula fechas y permite --date y --source; validada con comprobaciones de comportamiento; el script Python temporal fue eliminado a petición del usuario.
+- [x] Alma: inspección real confirmada por el usuario (Loans 19 columnas, Renewals 18, Column0 incluida).
+- [x] Extracción paginada implementada con filtro por fecha; comprobada con respuestas simuladas. El usuario ejecutó la extracción real y contrastó los datos con Analytics: confirmó coincidencia.
+- [ ] Persistencia en Neon: pendiente de acordar esquema y claves.
+- [ ] Automatización y otras fuentes: pendientes.
+- [ ] Observabilidad: mover al final, antes del cierre operativo.
+- [ ] Functions y cambio de motor: diferidos.
 
 ## 1. Comprender y depurar el ejemplo actual
 
@@ -72,7 +80,9 @@ Validación: fechas D−2/D/D−1, cambio de mes/año, año bisiesto, zona horar
 
 Aceptación: la misma fecha manual produce las mismas fechas objetivo; todavía no consulta servicios reales.
 
-## 3. Observabilidad corporativa desde consola
+## Observabilidad corporativa — diferida al final
+
+No ejecutar ahora. El usuario pidió abordar primero las extracciones y dejar esta integración para la parte final del proyecto. La inspección de la DLL encontró dos extensiones AddOpenTelemetryObservability sobre IHostApplicationBuilder (ILogger y Serilog), con exportadores OTLP incondicionales. No se añadió referencia ni dependencia al proyecto. La herramienta de inspección se instaló solo en /tmp/pipeline-etl-tools, fuera del repositorio.
 
 Inspeccionar API pública y dependencias de la DLL, contrastar registro con referencias TI y comprobar compatibilidad Linux/.NET 10. Integrar una sola configuración de logging/telemetría sin duplicar proveedores. Mantener salida local útil sin requerir un collector institucional inaccesible. Confirmar con TI cualquier requisito no deducible del template.
 
@@ -124,7 +134,7 @@ Si se decide cambiar de motor, adaptar proveedor, migraciones y SQL en Infrastru
 
 ## Próxima sesión
 
-Comenzar por etapa 1. Compartir en el chat los comandos de consola y pedir al usuario que los ejecute y guiar la lectura de los tres archivos. No avanzar con credenciales ni configurar GitHub Actions todavía.
+Siguiente etapa: primera extracción completa hacia Neon. El usuario eligió Alma/Analytics como primera fuente. Ruta confirmada: /shared/Universidad Continental 51UCCI_INST/Reports/API/ con reportes Loans y Renewals. URL base: https://api-na.hosted.exlibrisgroup.com. El usuario requiere todas las columnas y confirma filtros de fecha is prompted. Campos confirmados: Loans usa "Loan Date"."Loan Date"; Renewals usa "Renewal Date"."Renewal Date". Ambos están is prompted. Documentación oficial revisada: https://developers.exlibrisgroup.com/alma/apis/analytics/ (respuesta XML, paginación con token). No pedir credenciales por chat. La consola permite --inspect-alma (primera página, 25 filas, sin filtro); el usuario confirmó éxito real y columnas. --extract-alma [--date YYYY-MM-DD] consulta ambos reportes para D−2 con igualdad xsd:date, páginas de 1000 filas y token estable hasta IsFinished=true. Conserva todas las columnas como diccionarios por ColumnN, esquema y texto original, distinguiendo null/vacío. Application valida cada fecha devuelta antes de contar el lote; sin escritura ni exportación de valores todavía. ALMA_API_KEY se recibe por variable de entorno y se envía en Authorization, nunca en URL. No hacer reintentos automáticos de continuación: una solicitud puede avanzar el cursor remoto. Si falla, marcar ejecución incompleta y repetir desde la primera página. El usuario confirmó que la extracción real coincide con los resultados contrastados en Analytics. La etapa siguiente es definir esquema/claves y cargar Neon sin duplicar datos. El comando --date es fecha de referencia D, no fecha objetivo. DemoPipeline conserva el cambio de mensaje del usuario y sigue disponible para la entrada Functions diferida. No implementar fuentes sin definir sus datos.
 
 ## Repositorio
 
