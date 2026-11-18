@@ -16,7 +16,7 @@
       }
     },
     {
-      "label": "Ejecutar ejemplo consola",
+      "label": "Planificar fechas de extracción",
       "type": "process",
       "command": "dotnet",
       "args": [
