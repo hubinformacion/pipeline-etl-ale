@@ -1,6 +1,7 @@
 using System.Globalization;
 using PipelineEtl.Application;
 using PipelineEtl.Infrastructure.Sources.Alma;
+using PipelineEtl.Infrastructure.Sources.Elogim;
 using PipelineEtl.Infrastructure.Persistence.PostgreSql;
 
 if (args is ["--help"])
@@ -10,6 +11,8 @@ if (args is ["--help"])
     Console.WriteLine("Inicializar tablas: --init-db (requiere NEON_CONNECTION_STRING en formato .NET).");
     Console.WriteLine("Cargar en PostgreSQL: --load-alma [--date YYYY-MM-DD] (reemplaza D−2 por reporte, en transacción).");
     Console.WriteLine("Inspección de columnas: --inspect-alma (requiere ALMA_API_KEY; sin filtro de fecha ni extracción completa).");
+    Console.WriteLine("Extracción Elogim sin guardar: --extract-elogim [--date YYYY-MM-DD] (consulta D−1).");
+    Console.WriteLine("Inspección Elogim: --inspect-elogim (requiere ELOGIM_CONNECTION_STRING; solo nombres y tipos).");
     Console.WriteLine("Sin fecha: hoy en America/Lima. Sin fuente: all. Solo calcula fechas; no extrae datos.");
     return 0;
 }
@@ -24,6 +27,16 @@ try
         await using var store = CreateStore();
         await store.InitializeAsync(cancellation.Token);
         Console.WriteLine("Esquema etl y tablas alma_loans/alma_renewals preparados. No se cargaron datos.");
+        return 0;
+    }
+
+    if (args is ["--inspect-elogim"])
+    {
+        var client = CreateElogimClient();
+        var columns = await client.InspectAsync(cancellation.Token);
+        Console.WriteLine($"Elogim: {columns.Count} columnas. Solo esquema; sin lectura de filas ni escritura.");
+        foreach (var column in columns)
+            Console.WriteLine($"  {column.Name} | {column.DatabaseType} | {column.DotNetType} | nullable: {column.IsNullable}");
         return 0;
     }
 
@@ -46,11 +59,12 @@ try
         return 0;
     }
 
+    var extractElogim = args.Contains("--extract-elogim");
     var extractAlma = args.Contains("--extract-alma");
     var loadAlma = args.Contains("--load-alma");
-    if ((extractAlma && loadAlma) || args.Count(a => a == "--extract-alma") > 1 || args.Count(a => a == "--load-alma") > 1)
-        throw new ArgumentException("Elige solo un modo: --extract-alma o --load-alma, sin repetirlo.");
-    args = args.Where(a => a is not ("--extract-alma" or "--load-alma")).ToArray();
+    if (args.Count(a => a is "--extract-alma" or "--load-alma" or "--extract-elogim") > 1)
+        throw new ArgumentException("Elige solo un modo de extracción o carga, sin repetirlo.");
+    args = args.Where(a => a is not ("--extract-alma" or "--load-alma" or "--extract-elogim")).ToArray();
 
     DateOnly? requestedDate = null;
     string source = "all";
@@ -74,11 +88,21 @@ try
     var referenceDate = requestedDate ?? ExtractionPlanner.Today(DateTimeOffset.UtcNow);
     if ((extractAlma || loadAlma) && seen.Contains("--source") && source != "alma")
         throw new ArgumentException("La extracción/carga de Alma solo admite --source alma.");
-    var plan = ExtractionPlanner.Create(referenceDate, extractAlma || loadAlma ? "alma" : source);
+    if (extractElogim && seen.Contains("--source") && source != "elogim")
+        throw new ArgumentException("La extracción de Elogim solo admite --source elogim.");
+    var plan = ExtractionPlanner.Create(referenceDate, extractAlma || loadAlma ? "alma" : extractElogim ? "elogim" : source);
     Console.WriteLine($"Fecha de referencia: {referenceDate:yyyy-MM-dd} ({ExtractionPlanner.TimeZoneId})");
     foreach (var day in plan)
         Console.WriteLine($"{day.Source}: {day.Date:yyyy-MM-dd}");
-    if (extractAlma || loadAlma)
+    if (extractElogim)
+    {
+        var date = plan.Single().Date;
+        var end = date.AddDays(1);
+        Console.WriteLine($"Elogim: intervalo [{date:yyyy-MM-dd} 00:00:00, {end:yyyy-MM-dd} 00:00:00). Hora local Perú.");
+        var count = await new ExtractElogim(CreateElogimClient()).RunAsync(date, cancellation.Token);
+        Console.WriteLine($"Elogim: extracción completada; {count} filas; 5 columnas. Sin persistencia.");
+    }
+    else if (extractAlma || loadAlma)
     {
         var apiKey = Environment.GetEnvironmentVariable("ALMA_API_KEY");
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -138,4 +162,12 @@ static PostgresAlmaReportStore CreateStore()
     if (string.IsNullOrWhiteSpace(connectionString))
         throw new ArgumentException("Configura NEON_CONNECTION_STRING en la terminal; no compartas la cadena en el chat ni en Git.");
     return new PostgresAlmaReportStore(connectionString);
+}
+
+static ElogimClient CreateElogimClient()
+{
+    var connectionString = Environment.GetEnvironmentVariable("ELOGIM_CONNECTION_STRING");
+    if (string.IsNullOrWhiteSpace(connectionString))
+        throw new ArgumentException("Configura ELOGIM_CONNECTION_STRING en la terminal; no compartas las credenciales en el chat ni en Git.");
+    return new ElogimClient(connectionString, Environment.GetEnvironmentVariable("ELOGIM_TABLE") ?? "est_ezproxy");
 }
