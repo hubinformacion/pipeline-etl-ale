@@ -12,6 +12,7 @@ if (args is ["--help"])
     Console.WriteLine("Cargar en PostgreSQL: --load-alma [--date YYYY-MM-DD] (reemplaza D−2 por reporte, en transacción).");
     Console.WriteLine("Inspección de columnas: --inspect-alma (requiere ALMA_API_KEY; sin filtro de fecha ni extracción completa).");
     Console.WriteLine("Extracción Elogim sin guardar: --extract-elogim [--date YYYY-MM-DD] (consulta D−1).");
+    Console.WriteLine("Cargar Elogim en PostgreSQL: --load-elogim [--date YYYY-MM-DD] (reemplaza D−1 en transacción).");
     Console.WriteLine("Inspección Elogim: --inspect-elogim (requiere ELOGIM_CONNECTION_STRING; solo nombres y tipos).");
     Console.WriteLine("Sin fecha: hoy en America/Lima. Sin fuente: all. Solo calcula fechas; no extrae datos.");
     return 0;
@@ -24,9 +25,9 @@ try
 {
     if (args is ["--init-db"])
     {
-        await using var store = CreateStore();
-        await store.InitializeAsync(cancellation.Token);
-        Console.WriteLine("Esquema etl y tablas alma_loans/alma_renewals preparados. No se cargaron datos.");
+        await using var database = new PostgresDatabase(GetPostgresConnectionString());
+        await database.InitializeAsync(cancellation.Token);
+        Console.WriteLine("Esquema etl y tablas alma_loans/alma_renewals/elogim_sessions preparados. No se cargaron datos.");
         return 0;
     }
 
@@ -60,11 +61,12 @@ try
     }
 
     var extractElogim = args.Contains("--extract-elogim");
+    var loadElogim = args.Contains("--load-elogim");
     var extractAlma = args.Contains("--extract-alma");
     var loadAlma = args.Contains("--load-alma");
-    if (args.Count(a => a is "--extract-alma" or "--load-alma" or "--extract-elogim") > 1)
+    if (args.Count(a => a is "--extract-alma" or "--load-alma" or "--extract-elogim" or "--load-elogim") > 1)
         throw new ArgumentException("Elige solo un modo de extracción o carga, sin repetirlo.");
-    args = args.Where(a => a is not ("--extract-alma" or "--load-alma" or "--extract-elogim")).ToArray();
+    args = args.Where(a => a is not ("--extract-alma" or "--load-alma" or "--extract-elogim" or "--load-elogim")).ToArray();
 
     DateOnly? requestedDate = null;
     string source = "all";
@@ -88,19 +90,30 @@ try
     var referenceDate = requestedDate ?? ExtractionPlanner.Today(DateTimeOffset.UtcNow);
     if ((extractAlma || loadAlma) && seen.Contains("--source") && source != "alma")
         throw new ArgumentException("La extracción/carga de Alma solo admite --source alma.");
-    if (extractElogim && seen.Contains("--source") && source != "elogim")
+    if ((extractElogim || loadElogim) && seen.Contains("--source") && source != "elogim")
         throw new ArgumentException("La extracción de Elogim solo admite --source elogim.");
-    var plan = ExtractionPlanner.Create(referenceDate, extractAlma || loadAlma ? "alma" : extractElogim ? "elogim" : source);
+    var plan = ExtractionPlanner.Create(referenceDate, extractAlma || loadAlma ? "alma" : extractElogim || loadElogim ? "elogim" : source);
     Console.WriteLine($"Fecha de referencia: {referenceDate:yyyy-MM-dd} ({ExtractionPlanner.TimeZoneId})");
     foreach (var day in plan)
         Console.WriteLine($"{day.Source}: {day.Date:yyyy-MM-dd}");
-    if (extractElogim)
+    if (extractElogim || loadElogim)
     {
         var date = plan.Single().Date;
         var end = date.AddDays(1);
         Console.WriteLine($"Elogim: intervalo [{date:yyyy-MM-dd} 00:00:00, {end:yyyy-MM-dd} 00:00:00). Hora local Perú.");
-        var count = await new ExtractElogim(CreateElogimClient()).RunAsync(date, cancellation.Token);
-        Console.WriteLine($"Elogim: extracción completada; {count} filas; 5 columnas. Sin persistencia.");
+        var extraction = new ExtractElogim(CreateElogimClient());
+        if (loadElogim)
+        {
+            await using var store = new PostgresElogimSessionStore(GetPostgresConnectionString());
+            Console.WriteLine("Cargando Elogim. Repetir el día reemplaza sus filas; solo se confirma tras leer la consulta completa.");
+            var count = await extraction.LoadAsync(date, store, cancellation.Token);
+            Console.WriteLine($"Elogim: carga confirmada; {count} filas; 5 columnas.");
+        }
+        else
+        {
+            var count = await extraction.RunAsync(date, cancellation.Token);
+            Console.WriteLine($"Elogim: extracción completada; {count} filas; 5 columnas. Sin persistencia.");
+        }
     }
     else if (extractAlma || loadAlma)
     {
@@ -156,12 +169,14 @@ catch (InvalidOperationException ex)
     return 1;
 }
 
-static PostgresAlmaReportStore CreateStore()
+static PostgresAlmaReportStore CreateStore() => new(GetPostgresConnectionString());
+
+static string GetPostgresConnectionString()
 {
     var connectionString = Environment.GetEnvironmentVariable("NEON_CONNECTION_STRING");
     if (string.IsNullOrWhiteSpace(connectionString))
         throw new ArgumentException("Configura NEON_CONNECTION_STRING en la terminal; no compartas la cadena en el chat ni en Git.");
-    return new PostgresAlmaReportStore(connectionString);
+    return connectionString;
 }
 
 static ElogimClient CreateElogimClient()
