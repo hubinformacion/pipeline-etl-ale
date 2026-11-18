@@ -1,0 +1,135 @@
+using Azure.Extensions.AspNetCore.Configuration.Secrets;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.ApplicationInsights;
+using Microsoft.Azure.Functions.Worker.OpenTelemetry;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using workflowengine.paymentsprocessor.Constants;
+using workflowengine.paymentsprocessor.Extensions;
+using workflowengine.paymentsprocessor.Services;
+using Shared.ObservabilityNet.ILogger;
+
+var host = new HostBuilder()
+    .ConfigureFunctionsWebApplication()
+    .ConfigureAppConfiguration((context, configBuilder) =>
+    {
+        // Azure Functions no carga user-secrets automáticamente
+        if (context.HostingEnvironment.IsDevelopment())
+        {
+            configBuilder.AddUserSecrets<Program>(optional: true, reloadOnChange: true);
+        }
+        
+        var builtConfig = configBuilder.Build();
+        var vaultName = builtConfig["Vault"];
+        var bootstrapLogger = KeyVaultConfigurationExtensions.CreateBootstrapLogger();
+
+        if (string.IsNullOrEmpty(vaultName))
+        {
+            bootstrapLogger.Warning("Azure Key Vault no configurado (falta 'Vault').");
+            bootstrapLogger.Information("Usando configuración local (user-secrets/local.settings.json)");
+            return;
+        }
+
+        var keyVaultUri = new Uri($"https://{vaultName}.vault.azure.net/");
+        var credential = KeyVaultConfigurationExtensions.CreateCredential(builtConfig, bootstrapLogger);
+
+        bootstrapLogger.Information("Conectando a Azure Key Vault: {VaultName}", vaultName);
+
+        configBuilder.AddAzureKeyVault(keyVaultUri, credential, new AzureKeyVaultConfigurationOptions
+        {
+            ReloadInterval = TimeSpan.FromHours(12)
+        });
+
+        bootstrapLogger.Information("Conexión a Azure Key Vault exitosa: {VaultName}", vaultName);
+        
+    })
+    .ConfigureServices((context, services) =>
+    {
+        // Validar configuración requerida
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("========================================");
+        Console.WriteLine("VALIDANDO CONFIGURACIÓN REQUERIDA");
+        Console.WriteLine("========================================");
+        Console.ResetColor();
+        
+        ConfigurationValidationExtensions.ValidateConfiguration(context.Configuration);
+
+        // Application Insights debe registrarse ANTES de los HttpClient con resilience.
+        // Microsoft.ApplicationInsights.WorkerService 2.22.0 tiene un bug documentado donde la telemetría
+        // se pierde si el pipeline de resilience se registra primero. El fix oficial del equipo .NET es
+        // este orden o actualizar a 2.23.0+.
+        // Ref: https://github.com/dotnet/extensions/blob/main/src/Libraries/Microsoft.Extensions.Http.Resilience/README.md
+        services
+            .AddApplicationInsightsTelemetryWorkerService()
+            .ConfigureFunctionsApplicationInsights();
+
+        // OpenTelemetry: trazas y métricas exportadas vía OTLP (config en host.json / env vars).
+        services.AddOpenTelemetry()
+            .WithTracing(tracing => tracing
+                .AddHttpClientInstrumentation()
+                .AddOtlpExporter())
+            .WithMetrics(metrics => metrics
+                .AddRuntimeInstrumentation()
+                .AddHttpClientInstrumentation()
+                .AddOtlpExporter())
+            .UseFunctionsWorkerDefaults();
+
+        // Registro de HttpClients con configuración.
+        // Cada cliente usa su propia subscription key de APIM para aislar el blast radius por MS.
+        var workflowEngineApimKey = context.Configuration["WorkflowEngine:Security:ApimSubscriptionKey"];
+        var paymentApimKey = context.Configuration["WorkflowEngine:Integrations:PaymentApi:ApimKey"];
+
+        // Valores de resilience leídos una sola vez durante el bootstrap para evitar parsear en cada request.
+        // La validación de configuración ya garantiza que estas claves existen antes de llegar acá.
+        var maxRetries = int.Parse(context.Configuration[PaymentProcessingConstants.MaxRetriesConfigKey]!);
+        var initialDelayMs = int.Parse(context.Configuration[PaymentProcessingConstants.InitialDelayMsConfigKey]!);
+       
+        services.AddHttpClient<IWorkflowEngineService, WorkflowEngineService>((serviceProvider, client) =>
+            {
+                var config = serviceProvider.GetRequiredService<IConfiguration>();
+                var baseUrl = config["WorkflowEngine:Api:BaseUrl"];
+
+                if (!string.IsNullOrEmpty(baseUrl))
+                {
+                    client.BaseAddress = UrlNormalizer.NormalizeBaseUrl(baseUrl);
+                }
+
+                if (!string.IsNullOrEmpty(workflowEngineApimKey))
+                {
+                    client.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", workflowEngineApimKey);
+                }
+
+                client.Timeout = TimeSpan.FromSeconds(PaymentProcessingConstants.DefaultHttpClientTimeoutSeconds);
+            })
+            .AddStandardResilienceHandler(options =>
+                ResilienceConfigurationExtensions.ConfigureStandardResilience(options, maxRetries, initialDelayMs));
+
+        services.AddHttpClient<IPaymentService, PaymentService>((serviceProvider, client) =>
+            {
+                var config = serviceProvider.GetRequiredService<IConfiguration>();
+                var baseUrl = config["WorkflowEngine:Integrations:PaymentApi:BaseUrl"];
+
+                if (!string.IsNullOrEmpty(baseUrl))
+                {
+                    client.BaseAddress = UrlNormalizer.NormalizeBaseUrl(baseUrl);
+                }
+
+                if (!string.IsNullOrEmpty(paymentApimKey))
+                {
+                    client.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", paymentApimKey);
+                }
+
+                client.Timeout = TimeSpan.FromSeconds(PaymentProcessingConstants.DefaultHttpClientTimeoutSeconds);
+            })
+            .AddStandardResilienceHandler(options =>
+                ResilienceConfigurationExtensions.ConfigureStandardResilience(options, maxRetries, initialDelayMs));
+
+        // AddHttpClient ya registra los servicios con su HttpClient configurado;
+        // no duplicar con AddScoped o se sobreescribiría el registro sin HttpClient tipado.
+    })
+    .Build();
+
+host.Run();

@@ -1,0 +1,30 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Compilar consola",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "src/PipelineEtl.Console/PipelineEtl.Console.csproj"
+      ],
+      "problemMatcher": "$msCompile",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Ejecutar ejemplo consola",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "src/PipelineEtl.Console"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}
