@@ -77,7 +77,9 @@ Avanzar una etapa a la vez, con cambios pequeños. Antes de cada etapa explicar 
 - [x] Workflow conjunto preparado: una fecha, un runner/build y cargas secuenciales independientes.
 - [x] Workflows anteriores retirados del repo; API confirma ambos state=deleted. Solo ETL diario a Neon (id423069134) activo.
 - [x] Prueba conjunta remota exitosa: run44390426509, D2026-11-18,sourceall, un job/build,47s; Loans225,Renewals38,Elogim1626 filas.
-- [ ] LibCal: pendiente.
+- [x] LibCal: OpenAPI interpretado y movido a docs/apis; catálogo14categorías/6campus configurado.
+- [x] LibCal: cliente OAuth, inspección y extracción paginada implementados; solución Release y pruebas simuladas pasaron, revisión independiente sin hallazgos importantes; sin persistencia ni workflow aún.
+- [ ] LibCal: usuario debe configurar credenciales locales e inspeccionar/contrastar respuesta real.
 - [ ] Observabilidad: mover al final, antes del cierre operativo.
 - [ ] Functions y cambio de motor: diferidos.
 
@@ -149,7 +151,7 @@ Si se decide cambiar de motor, adaptar proveedor, migraciones y SQL en Infrastru
 
 ## Próxima sesión
 
-Siguiente paso: definir datos y endpoint de LibCal con el usuario e incorporarlo al mismo workflow cuando esté validado. Workflow conjunto publicado (commit57c1705) y prueba https://github.com/hubinformacion/pipeline-etl-ale/actions/runs/44390426509 verificada como success; referencia2026-11-18, sourceall, un job/build y47s. Confirma Loans225/Renewals38 para2026-11-16 y Elogim1626 para2026-11-17. Ambos pasos y resumen terminaron success. No inventar endpoints, campos o tratamiento del día actual después de las 22:00.
+Siguiente paso: usuario debe ejecutar --inspect-libcal con LIBCAL_CLIENT_ID/LIBCAL_CLIENT_SECRET locales, compartir solo campos/tipos/conteos y luego contrastar --extract-libcal con LibCal. Base https://continental.libcal.com, token /1.1/oauth/token, GET /1.1/space/bookings. Después definir persistencia legible e incorporar al workflow conjunto, conservando independencia por fuente. El usuario aprobó foto de D a22:00Lima: biblioteca cierra21:00 y confirma no habrá nuevos registros después de22:00. No cambiar D a D−1 para LibCal. Workflow conjunto publicado (commit57c1705) y prueba https://github.com/hubinformacion/pipeline-etl-ale/actions/runs/44390426509 verificada como success; referencia2026-11-18, sourceall, un job/build y47s. Confirma Loans225/Renewals38 para2026-11-16 y Elogim1626 para2026-11-17. Ambos pasos y resumen terminaron success. No inventar campos ni identificadores de usuarios; cierres y foto22:00 ya confirmados para LibCal.
 
 ## Operación y decisiones de ejecución
 
@@ -162,6 +164,10 @@ Siguiente paso: definir datos y endpoint de LibCal con el usuario e incorporarlo
 
 ## Referencia técnica por fuente
 
+- Contrato LibCal suministrado por usuario: docs/apis/libcal-v1.1.openapi.yml. /space/bookings ignora fechas pasadas; guardia rechaza D anterior a hoyLima antes de consultar y después de cada respuesta (también evita cruces de medianoche). No prometer backfill histórico con esta ruta. /space/bookings/updates solo admite últimas24h y no tiene los mismos campos/parámetros, no implementarlo como fallback automático.
+- LibCal query: dateD,days0 (un día; days1 amplía),lid/cid por categoría,page1..,limit100; continuar si count==limit, parar al recibir menos, max10000 con fallo explícito y guardia de página repetida. Flags form_answers/check_in_status/include_cancel/include_tentative/include_denied=1. Respuesta raíz array; OAuth object por schema, form-urlencoded client_credentials, Bearer con caché/expiry y una renovación al401. No seguir redirects de token/carga.
+- LibCal categorías JSON en Console, copiado a output/publish,14categorías de6campus con SourceName/FormId. No contiene credenciales. --inspect-libcal consulta solo primera página hasta25/categoría y muestra unión de nombres/tipos, sin valores personales. --extract-libcal recorre todas las páginas y conserva PayloadJson completo, no escribe archivos ni base; valida cid/lid si vienen y solape del intervalo de usoD en Lima, fechas ISO con offset explícito.
+- Formularios de referencia LibCal:8253 espacios grupales (q25458 teléfono,q25536 términos,q25459 correo integrante2,q25460 correo integrante3; booking_form_answer_1/2 corresponden q25459/q25460);8254 computadoras/laptops y Kindle (q25458 teléfono,q25536 términos). LibCal devuelve check_in_status como estado(in/out/-), no inferir check-in/out timestamps. No derivar user_id desde email hasta validación universitaria; tampoco usar id de reserva como id de usuario. Conservar account/email y respuestas originales.
 - Alma API base https://api-na.hosted.exlibrisgroup.com; carpeta /shared/Universidad Continental 51UCCI_INST/Reports/API/ con Loans y Renewals. Conservar las 19 y 18 columnas, incluida Column0; no confundir COUNT(*) de filas de Renewals con SUM(renewals).
 - Filtros is prompted: Loans usa "Loan Date"."Loan Date"; Renewals usa "Renewal Date"."Renewal Date". Se envía igualdad xsd:date, páginas de1000 y token inicial reutilizado hasta IsFinished. No reintentar automáticamente una continuación, pues puede avanzar el cursor; repetir el día completo si falla. Cada fila valida fecha objetivo.
 - Elogim origen predeterminado elogim_continental.est_ezproxy. SELECT fecha_sesion,id_est,identificacion,bd y CASE tipo_consulta (pdf→Descarga,busqueda→Búsqueda,sesion→Acceso,resto sin cambiar). D−1 se filtra >= medianoche inicial y < medianoche siguiente con parámetros MySqlDbType.DateTime.

@@ -1,7 +1,10 @@
 using System.Globalization;
+using System.Text.Json;
+using PipelineEtl.Domain;
 using PipelineEtl.Application;
 using PipelineEtl.Infrastructure.Sources.Alma;
 using PipelineEtl.Infrastructure.Sources.Elogim;
+using PipelineEtl.Infrastructure.Sources.LibCal;
 using PipelineEtl.Infrastructure.Persistence.PostgreSql;
 
 if (args is ["--help"])
@@ -14,6 +17,7 @@ if (args is ["--help"])
     Console.WriteLine("Extracción Elogim sin guardar: --extract-elogim [--date YYYY-MM-DD] (consulta D−1).");
     Console.WriteLine("Cargar Elogim en PostgreSQL: --load-elogim [--date YYYY-MM-DD] (reemplaza D−1 en transacción).");
     Console.WriteLine("Inspección Elogim: --inspect-elogim (requiere ELOGIM_CONNECTION_STRING; solo nombres y tipos).");
+    Console.WriteLine("LibCal: --inspect-libcal o --extract-libcal [--date YYYY-MM-DD] (D, reservas de uso; sin persistencia).");
     Console.WriteLine("Sin fecha: hoy en America/Lima. Sin fuente: all. Solo calcula fechas; no extrae datos.");
     return 0;
 }
@@ -60,13 +64,15 @@ try
         return 0;
     }
 
+    var inspectLibCal = args.Contains("--inspect-libcal");
+    var extractLibCal = args.Contains("--extract-libcal");
     var extractElogim = args.Contains("--extract-elogim");
     var loadElogim = args.Contains("--load-elogim");
     var extractAlma = args.Contains("--extract-alma");
     var loadAlma = args.Contains("--load-alma");
-    if (args.Count(a => a is "--extract-alma" or "--load-alma" or "--extract-elogim" or "--load-elogim") > 1)
+    if (args.Count(a => a is "--extract-alma" or "--load-alma" or "--extract-elogim" or "--load-elogim" or "--inspect-libcal" or "--extract-libcal") > 1)
         throw new ArgumentException("Elige solo un modo de extracción o carga, sin repetirlo.");
-    args = args.Where(a => a is not ("--extract-alma" or "--load-alma" or "--extract-elogim" or "--load-elogim")).ToArray();
+    args = args.Where(a => a is not ("--extract-alma" or "--load-alma" or "--extract-elogim" or "--load-elogim" or "--inspect-libcal" or "--extract-libcal")).ToArray();
 
     DateOnly? requestedDate = null;
     string source = "all";
@@ -92,11 +98,52 @@ try
         throw new ArgumentException("La extracción/carga de Alma solo admite --source alma.");
     if ((extractElogim || loadElogim) && seen.Contains("--source") && source != "elogim")
         throw new ArgumentException("La extracción de Elogim solo admite --source elogim.");
-    var plan = ExtractionPlanner.Create(referenceDate, extractAlma || loadAlma ? "alma" : extractElogim || loadElogim ? "elogim" : source);
+    if ((inspectLibCal || extractLibCal) && seen.Contains("--source") && source != "libcal")
+        throw new ArgumentException("La inspección/extracción de LibCal solo admite --source libcal.");
+    var plan = ExtractionPlanner.Create(referenceDate, extractAlma || loadAlma ? "alma" : extractElogim || loadElogim ? "elogim" : inspectLibCal || extractLibCal ? "libcal" : source);
     Console.WriteLine($"Fecha de referencia: {referenceDate:yyyy-MM-dd} ({ExtractionPlanner.TimeZoneId})");
     foreach (var day in plan)
         Console.WriteLine($"{day.Source}: {day.Date:yyyy-MM-dd}");
-    if (extractElogim || loadElogim)
+    if (inspectLibCal || extractLibCal)
+    {
+        var clientId = Environment.GetEnvironmentVariable("LIBCAL_CLIENT_ID");
+        var clientSecret = Environment.GetEnvironmentVariable("LIBCAL_CLIENT_SECRET");
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+            throw new ArgumentException("Configura LIBCAL_CLIENT_ID y LIBCAL_CLIENT_SECRET en la terminal; no compartas los valores en el chat ni en Git.");
+        var categories = LoadLibCalCategories();
+        using var httpClient = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(120) };
+        var extraction = new ExtractLibCalBookings(new LibCalClient(httpClient, clientId, clientSecret), categories);
+        if (inspectLibCal)
+        {
+            Console.WriteLine("LibCal: primera página por categoría (hasta 25 filas); solo conteos y nombres/tipos de campos. Sin persistencia.");
+            var allFields = new Dictionary<string, HashSet<string>>();
+            await foreach (var sample in extraction.InspectAsync(plan.Single().Date, cancellation.Token))
+            {
+                Console.WriteLine($"{sample.Category.LocationName} / {sample.Category.Name} (cid {sample.Category.Id}): muestra {sample.SampleRowCount}; puede haber más: {sample.HasMore}.");
+                foreach (var field in sample.Fields)
+                {
+                    if (!allFields.TryGetValue(field.Name, out var types)) allFields[field.Name] = types = [];
+                    types.UnionWith(field.Types);
+                }
+            }
+            Console.WriteLine("Campos observados (no incluye valores):");
+            foreach (var field in allFields.OrderBy(f => f.Key))
+                Console.WriteLine($"  {field.Key} | {string.Join(", ", field.Value.Order())}");
+        }
+        else
+        {
+            Console.WriteLine("LibCal: extracción paginada por categoría; incluye canceladas, tentativas y denegadas. Sin persistencia.");
+            long total = 0;
+            await foreach (var progress in extraction.RunAsync(plan.Single().Date, cancellation.Token))
+            {
+                if (!progress.IsFinished) continue;
+                total += progress.RowCount;
+                Console.WriteLine($"{progress.Category.LocationName} / {progress.Category.Name} (cid {progress.Category.Id}): {progress.RowCount} filas; {progress.PageCount} páginas.");
+            }
+            Console.WriteLine($"LibCal: extracción completada; {total} filas; {categories.Count} categorías. Sin persistencia.");
+        }
+    }
+    else if (extractElogim || loadElogim)
     {
         var date = plan.Single().Date;
         var end = date.AddDays(1);
@@ -185,4 +232,22 @@ static ElogimClient CreateElogimClient()
     if (string.IsNullOrWhiteSpace(connectionString))
         throw new ArgumentException("Configura ELOGIM_CONNECTION_STRING en la terminal; no compartas las credenciales en el chat ni en Git.");
     return new ElogimClient(connectionString, Environment.GetEnvironmentVariable("ELOGIM_TABLE") ?? "est_ezproxy");
+}
+
+static IReadOnlyList<LibCalCategory> LoadLibCalCategories()
+{
+    try
+    {
+        var categories = JsonSerializer.Deserialize<List<LibCalCategory>>(
+            File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "libcal.categories.json")));
+        if (categories is null || categories.Count == 0 || categories.Any(c => c is null ||
+                string.IsNullOrWhiteSpace(c.Id) || string.IsNullOrWhiteSpace(c.LocationId) ||
+                string.IsNullOrWhiteSpace(c.Name) || string.IsNullOrWhiteSpace(c.LocationName)))
+            throw new InvalidOperationException("LibCal: configuración de categorías incompleta.");
+        return categories;
+    }
+    catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+    {
+        throw new InvalidOperationException("No se pudo leer libcal.categories.json; verifica el archivo de configuración.");
+    }
 }

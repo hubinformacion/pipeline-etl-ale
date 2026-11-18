@@ -11,4 +11,7 @@
     <ProjectReference Include="../PipelineEtl.Application/PipelineEtl.Application.csproj" />
     <ProjectReference Include="../PipelineEtl.Infrastructure/PipelineEtl.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="libcal.categories.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
