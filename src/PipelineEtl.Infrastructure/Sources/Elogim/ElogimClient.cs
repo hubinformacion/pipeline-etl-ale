@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Security.Authentication;
 using MySqlConnector;
 using PipelineEtl.Application.Abstractions;
 using PipelineEtl.Domain;
@@ -19,8 +20,8 @@ public sealed class ElogimClient : IElogimClient
             if (string.IsNullOrWhiteSpace(options.Server) || string.IsNullOrWhiteSpace(options.Database) ||
                 string.IsNullOrWhiteSpace(options.UserID) || string.IsNullOrWhiteSpace(table))
                 throw new ArgumentException();
-            // Fuera de localhost verificamos identidad del servidor y cifrado de la conexión.
-            if (options.Server is not ("localhost" or "127.0.0.1" or "::1"))
+            // El modo explícito respeta la configuración de TI; en remoto el valor predeterminado verifica TLS.
+            if (!options.ContainsKey("SSL Mode") && options.Server is not ("localhost" or "127.0.0.1" or "::1"))
                 options.SslMode = MySqlSslMode.VerifyFull;
             options.PersistSecurityInfo = false;
             options.AllowLoadLocalInfile = false;
@@ -49,7 +50,7 @@ public sealed class ElogimClient : IElogimClient
         }
         catch (MySqlException ex)
         {
-            throw new InvalidOperationException($"No se pudo inspeccionar Elogim/MariaDB. Revisa conexión, TLS, permisos SELECT y tabla. Código: {ex.Number}.");
+            throw DescribeError(ex, "inspeccionar");
         }
     }
 
@@ -71,7 +72,7 @@ public sealed class ElogimClient : IElogimClient
         }
         catch (MySqlException ex)
         {
-            throw new InvalidOperationException($"No se pudo consultar Elogim/MariaDB. Revisa conexión, TLS y permisos SELECT. Código: {ex.Number}.");
+            throw DescribeError(ex, "consultar");
         }
         await using (reader)
         {
@@ -86,7 +87,7 @@ public sealed class ElogimClient : IElogimClient
                 }
                 catch (MySqlException ex)
                 {
-                    throw new InvalidOperationException($"La lectura de Elogim no se completó. Código: {ex.Number}.");
+                    throw DescribeError(ex, "completar la lectura");
                 }
                 catch (Exception ex) when (ex is InvalidCastException or FormatException or OverflowException)
                 {
@@ -117,6 +118,37 @@ public sealed class ElogimClient : IElogimClient
             => Convert.ToString(reader.GetValue(ordinal), CultureInfo.InvariantCulture),
         _ => throw new InvalidOperationException("Elogim devolvió un tipo no admitido; revisa --inspect-elogim.")
     };
+
+    private static InvalidOperationException DescribeError(MySqlException error, string operation)
+    {
+        // Traducimos solo causas conocidas; los mensajes originales pueden contener datos de conexión.
+        var detail = error.Number switch
+        {
+            1042 => "No se estableció la conexión. Verifica servidor, puerto y acceso desde WSL (incluida VPN o túnel SSH, si corresponde).",
+            1045 => "El servidor rechazó la autenticación. Revisa usuario, contraseña y autorización de la IP de origen.",
+            1044 or 1142 => "El usuario no tiene permiso para consultar la base o la tabla.",
+            1049 => "La base de datos configurada no existe o no es accesible.",
+            1146 => "No se encontró la tabla configurada.",
+            1054 => "La tabla no contiene alguna de las columnas requeridas por la consulta.",
+            _ => "La operación no se completó. Revisa conexión y permisos SELECT."
+        };
+        if (error.Message.Equals("Server does not support SSL", StringComparison.OrdinalIgnoreCase))
+            detail = "El servidor respondió, pero no anuncia soporte TLS. El modo SSL configurado exige TLS; compáralo con la conexión que funciona en Dataflare.";
+        else if (error.Message.Equals("SSL Authentication Error", StringComparison.OrdinalIgnoreCase) ||
+                 HasAuthenticationError(error))
+            detail = "Falló la negociación TLS o la validación del certificado. Usa el hostname del certificado y configura SslCa si la CA es privada.";
+        else if (error.Message.Contains("Connect Timeout", StringComparison.OrdinalIgnoreCase))
+            detail = "Se agotó el tiempo de conexión. Revisa puerto, firewall, VPN y acceso desde WSL.";
+
+        return new InvalidOperationException($"No se pudo {operation} Elogim/MariaDB. Código: {error.Number}. {detail}");
+    }
+
+    private static bool HasAuthenticationError(Exception error)
+    {
+        for (Exception? current = error; current is not null; current = current.InnerException)
+            if (current is AuthenticationException) return true;
+        return false;
+    }
 
     private static string Quote(string identifier) => "`" + identifier.Replace("`", "``") + "`";
 }
