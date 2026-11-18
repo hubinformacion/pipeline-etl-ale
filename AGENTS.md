@@ -75,7 +75,8 @@ Avanzar una etapa a la vez, con cambios pequeños. Antes de cada etapa explicar 
 - [x] Workflow manual Elogim → Neon validado: run44388911385, D=2026-11-18, objetivo2026-11-17, commit confirmado de1626 filas/5columnas, job35segundos.
 - [x] El usuario autorizó horario único 22:00 America/Lima y una misma ejecución para todas las fuentes.
 - [x] Workflow conjunto preparado: una fecha, un runner/build y cargas secuenciales independientes.
-- [ ] Verificar ejecución conjunta remota y retirar/inhabilitar los workflows anteriores.
+- [x] Workflows anteriores retirados del repo; API confirma ambos state=deleted. Solo ETL diario a Neon (id423069134) activo.
+- [x] Prueba conjunta remota exitosa: run44390426509, D2026-11-18,sourceall, un job/build,47s; Loans225,Renewals38,Elogim1626 filas.
 - [ ] LibCal: pendiente.
 - [ ] Observabilidad: mover al final, antes del cierre operativo.
 - [ ] Functions y cambio de motor: diferidos.
@@ -148,7 +149,7 @@ Si se decide cambiar de motor, adaptar proveedor, migraciones y SQL en Infrastru
 
 ## Próxima sesión
 
-Publicar y validar `.github/workflows/etl-neon.yml` con referencia 2026-11-18 y source=all; sustituye a los dos workflows anteriores. Después definir los datos de LibCal con el usuario. No inventar endpoints, campos o tratamiento del día actual después de las 22:00.
+Siguiente paso: definir datos y endpoint de LibCal con el usuario e incorporarlo al mismo workflow cuando esté validado. Workflow conjunto publicado (commit57c1705) y prueba https://github.com/hubinformacion/pipeline-etl-ale/actions/runs/44390426509 verificada como success; referencia2026-11-18, sourceall, un job/build y47s. Confirma Loans225/Renewals38 para2026-11-16 y Elogim1626 para2026-11-17. Ambos pasos y resumen terminaron success. No inventar endpoints, campos o tratamiento del día actual después de las 22:00.
 
 ## Operación y decisiones de ejecución
 
@@ -157,7 +158,7 @@ Publicar y validar `.github/workflows/etl-neon.yml` con referencia 2026-11-18 y 
 - El usuario eligió continuar la otra fuente si falla una, pero marcar el job fallido si cualquier carga falla. Cada carga tiene if !cancelled() y build.outcome=success, sin continue-on-error. Resumen por fuente al final. Si falla preparación/compilación o se cancela, no cargar fuentes.
 - Son dos invocaciones de la misma consola dentro del job conjunto (--load-alma y --load-elogim). --source all por sí solo sigue siendo planificación de fechas, no carga.
 - Secretos existentes verificados solo por nombre: ALMA_API_KEY, ELOGIM_CONNECTION_STRING y NEON_CONNECTION_STRING. No leer ni pedir valores. hubinformacion es cuenta personal; acceso actual push, sin admin de facturación. Usuario confirmó ausencia de tarjeta y autorizó cuota gratuita. No cambiar facturación.
-- Sustituir e inhabilitar workflows antiguos por ID: Alma 422966584 y Elogim 423059081; evitar dos schedules. Grupo nuevo etl-neon, sin cancelar carga activa; timeout30min. Acciones fijadas por SHA, permisos contents:read, sin artefactos de datos.
+- Workflows antiguos Alma422966584 y Elogim423059081 fueron eliminados; API confirma state=deleted. Intento de disable de Alma respondió403 por no estar activo; no es un bloqueo de permisos ni requiere aprobación/ampliar acceso. Solo ETL conjunto423069134 activo; evitar dos schedules. Grupo nuevo etl-neon, sin cancelar carga activa; timeout30min. Acciones fijadas por SHA, permisos contents:read, sin artefactos de datos.
 
 ## Referencia técnica por fuente
 
@@ -175,7 +176,7 @@ Publicar y validar `.github/workflows/etl-neon.yml` con referencia 2026-11-18 y 
 - Alma remota exitosa: https://github.com/hubinformacion/pipeline-etl-ale/actions/runs/44371949917; D2026-11-18, objetivo2026-11-16, Loans225 y Renewals38 filas, job39s.
 - Elogim remota exitosa: https://github.com/hubinformacion/pipeline-etl-ale/actions/runs/44388911385; D2026-11-18, objetivo2026-11-17,1626filas/5columnas, job35s. Logs emitidos tras commit; sin SQL independiente por el agente.
 - Pruebas fuera del repo con MariaDB SELECT-only y PostgreSQL temporales: límites del día, CASE, ceros/nulos/vacíos/Unicode/microsegundos, repetición/cargas concurrentes, rollback ante errores/fecha/esquema/cancelación/NULL, día vacío y días vecinos intactos. Regresión de Alma también pasó. No conservar suite Python ni instalar frameworks por rutina.
-- Primera ejecución automática diaria todavía no observada. Workflow conjunto validado con actionlint y scripts Bash temporales; falta prueba remota antes de darlo por validado.
+- Primera ejecución automática diaria todavía no observada. Workflow conjunto validado con actionlint, scripts Bash temporales, revisión independiente sin hallazgos importantes y prueba remota success run44390426509. Política de fallo parcial configurada según documentación GitHub; no se provocaron fallos contra los servicios reales.
 
 ## Repositorio
 
