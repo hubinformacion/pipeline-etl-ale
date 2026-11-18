@@ -79,7 +79,8 @@ Avanzar una etapa a la vez, con cambios pequeños. Antes de cada etapa explicar 
 - [x] Prueba conjunta remota exitosa: run44390426509, D2026-11-18,sourceall, un job/build,47s; Loans225,Renewals38,Elogim1626 filas.
 - [x] LibCal: OpenAPI interpretado y movido a docs/apis; catálogo14categorías/6campus configurado.
 - [x] LibCal: cliente OAuth, inspección y extracción paginada implementados; solución Release y pruebas simuladas pasaron, revisión independiente sin hallazgos importantes; sin persistencia ni workflow aún.
-- [ ] LibCal: usuario debe configurar credenciales locales e inspeccionar/contrastar respuesta real.
+- [x] LibCal: usuario ejecutó extracción real D2026-11-18;790filas/14categorías, incluidas páginas adicionales.
+- [ ] LibCal: falta salida --inspect-libcal (campos/tipos) y contraste explícito con interfaz/reporte; luego tabla Neon y workflow.
 - [ ] Observabilidad: mover al final, antes del cierre operativo.
 - [ ] Functions y cambio de motor: diferidos.
 
@@ -151,7 +152,7 @@ Si se decide cambiar de motor, adaptar proveedor, migraciones y SQL en Infrastru
 
 ## Próxima sesión
 
-Siguiente paso: usuario debe ejecutar --inspect-libcal con LIBCAL_CLIENT_ID/LIBCAL_CLIENT_SECRET locales, compartir solo campos/tipos/conteos y luego contrastar --extract-libcal con LibCal. Base https://continental.libcal.com, token /1.1/oauth/token, GET /1.1/space/bookings. Después definir persistencia legible e incorporar al workflow conjunto, conservando independencia por fuente. El usuario aprobó foto de D a22:00Lima: biblioteca cierra21:00 y confirma no habrá nuevos registros después de22:00. No cambiar D a D−1 para LibCal. Workflow conjunto publicado (commit57c1705) y prueba https://github.com/hubinformacion/pipeline-etl-ale/actions/runs/44390426509 verificada como success; referencia2026-11-18, sourceall, un job/build y47s. Confirma Loans225/Renewals38 para2026-11-16 y Elogim1626 para2026-11-17. Ambos pasos y resumen terminaron success. No inventar campos ni identificadores de usuarios; cierres y foto22:00 ya confirmados para LibCal.
+Siguiente paso: usuario debe compartir salida --inspect-libcal para confirmar campos/tipos reales antes de definir tabla Neon. Credenciales locales ya funcionan: proporcionó salida --extract-libcal para D2026-11-18 con790filas/14categorías. Conteos por cid:42378=0,42377=0,42358=107,42357=174,53609=2,42369=113,42368=60,42373=134,42372=52,53604=1,42375=116,42374=27,49251=3,49252=1. Son conteos reportados por el usuario en ese momento; no asumir constantes en ejecuciones posteriores ni contraste externo ya realizado. Se eliminó a petición del usuario el metadato Windows libcal-v1.1.openapi.yml:Zone.Identifier en raíz; estaba ignorado por *:Zone.Identifier y no se necesita. No volver a solicitar credenciales ni imprimir valores personales. Base https://continental.libcal.com, token /1.1/oauth/token, GET /1.1/space/bookings. Después definir persistencia legible e incorporar al workflow conjunto, conservando independencia por fuente. El usuario aprobó foto de D a22:00Lima: biblioteca cierra21:00 y confirma no habrá nuevos registros después de22:00. No cambiar D a D−1 para LibCal. Workflow conjunto publicado (commit57c1705) y prueba https://github.com/hubinformacion/pipeline-etl-ale/actions/runs/44390426509 verificada como success; referencia2026-11-18, sourceall, un job/build y47s. Confirma Loans225/Renewals38 para2026-11-16 y Elogim1626 para2026-11-17. Ambos pasos y resumen terminaron success. No inventar campos ni identificadores de usuarios; cierres y foto22:00 ya confirmados para LibCal.
 
 ## Operación y decisiones de ejecución
 
