@@ -38,7 +38,8 @@ public sealed class PostgresDatabase : IAsyncDisposable
                 "003_libcal_bookings.sql",
                 "005_libcal_canonical_columns.sql",
                 "006_libcal_report_fields.sql",
-                "007_libcal_remove_month_columns.sql"
+                "007_libcal_remove_month_columns.sql",
+                "008_alma_remove_source_column0.sql"
             ];
             foreach (var name in scripts)
             {

@@ -12,8 +12,6 @@ public sealed class PostgresAlmaReportStore : IAlmaReportStore, IAsyncDisposable
 
     public PostgresAlmaReportStore(string connectionString) => database = new PostgresDatabase(connectionString);
 
-    public Task InitializeAsync(CancellationToken cancellationToken) => database.InitializeAsync(cancellationToken);
-
     public async Task<AlmaExtractionProgress> ReplaceDayAsync(
         string report, DateOnly date, IAsyncEnumerable<AnalyticsReportPage> pages,
         CancellationToken cancellationToken)
@@ -61,8 +59,9 @@ public sealed class PostgresAlmaReportStore : IAlmaReportStore, IAsyncDisposable
                     await importer.WriteAsync(loadedAt, NpgsqlDbType.TimestampTz, cancellationToken);
                     for (int i = 0; i < mapping.Columns.Count; i++)
                     {
-                        if (!row.TryGetValue($"Column{i}", out var raw))
-                            throw new InvalidOperationException($"Alma/{report}: faltó Column{i}; carga cancelada.");
+                        var sourceColumn = AlmaTableMapping.SourceColumnId(i);
+                        if (!row.TryGetValue(sourceColumn, out var raw))
+                            throw new InvalidOperationException($"Alma/{report}: faltó {sourceColumn}; carga cancelada.");
                         var value = mapping.ConvertValue(i, raw);
                         if (value is null) await importer.WriteNullAsync(cancellationToken);
                         else await importer.WriteAsync(value, mapping.Columns[i].DbType, cancellationToken);

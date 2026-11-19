@@ -79,12 +79,17 @@ jobs:
         run: dotnet restore src/PipelineEtl.Console/PipelineEtl.Console.csproj
 
       - name: Compilar consola
-        id: build
         run: dotnet build src/PipelineEtl.Console/PipelineEtl.Console.csproj --configuration Release --no-restore
+
+      - name: Preparar esquema de Neon
+        id: schema
+        env:
+          NEON_CONNECTION_STRING: ${{ secrets.NEON_CONNECTION_STRING }}
+        run: timeout --kill-after=15s 2m dotnet src/PipelineEtl.Console/bin/Release/net10.0/PipelineEtl.Console.dll --init-db
 
       - name: Cargar LibCal
         id: libcal
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && (steps.plan.outputs.source == 'all' || steps.plan.outputs.source == 'libcal') }}
+        if: ${{ !cancelled() && steps.schema.outcome == 'success' && (steps.plan.outputs.source == 'all' || steps.plan.outputs.source == 'libcal') }}
         env:
           REFERENCE_DATE: ${{ steps.plan.outputs.reference_date }}
           LIBCAL_CLIENT_ID: ${{ secrets.LIBCAL_CLIENT_ID }}
@@ -101,12 +106,11 @@ jobs:
             exit 1
           fi
           app=src/PipelineEtl.Console/bin/Release/net10.0/PipelineEtl.Console.dll
-          timeout --kill-after=15s 2m dotnet "$app" --init-db
           timeout --kill-after=15s 10m dotnet "$app" --load-libcal --date "$REFERENCE_DATE"
 
       - name: Cargar Alma (Loans y Renewals)
         id: alma
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && (steps.plan.outputs.source == 'all' || steps.plan.outputs.source == 'alma') }}
+        if: ${{ !cancelled() && steps.schema.outcome == 'success' && (steps.plan.outputs.source == 'all' || steps.plan.outputs.source == 'alma') }}
         env:
           REFERENCE_DATE: ${{ steps.plan.outputs.reference_date }}
           ALMA_API_KEY: ${{ secrets.ALMA_API_KEY }}
@@ -122,7 +126,7 @@ jobs:
 
       - name: Cargar Elogim
         id: elogim
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && (steps.plan.outputs.source == 'all' || steps.plan.outputs.source == 'elogim') }}
+        if: ${{ !cancelled() && steps.schema.outcome == 'success' && (steps.plan.outputs.source == 'all' || steps.plan.outputs.source == 'elogim') }}
         env:
           REFERENCE_DATE: ${{ steps.plan.outputs.reference_date }}
           ELOGIM_CONNECTION_STRING: ${{ secrets.ELOGIM_CONNECTION_STRING }}

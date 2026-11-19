@@ -13,12 +13,10 @@ internal sealed record AlmaTableMapping(string Table, IReadOnlyList<AlmaTableCol
 
     private static AlmaTableColumn Text(string name, string heading) => new(name, heading, "xsd:string", NpgsqlDbType.Text);
     private static AlmaTableColumn Date(string name, string heading) => new(name, heading, "xsd:date", NpgsqlDbType.Date);
-    private static AlmaTableColumn Zero() => new("source_column0", "0", "xsd:int", NpgsqlDbType.Integer);
 
     public static AlmaTableMapping For(string report) => report switch
     {
         "Loans" => new("etl.alma_loans", [
-            Zero(),
             Text("phone_number", "CASE WHEN In House Loan Indicator = 'Y' THEN 'Uso interno' ELSE Preferred Phone Number END"),
             Text("campus_name", "Campus Name"), Text("circ_desk_name", "Circ Desk Name"),
             Date("loan_date", "Loan Date"), Text("author", "Author"), Text("barcode", "Barcode"),
@@ -30,7 +28,7 @@ internal sealed record AlmaTableMapping(string Table, IReadOnlyList<AlmaTableCol
             Text("preferred_email", "CASE WHEN In House Loan Indicator = 'Y' THEN 'Uso interno' ELSE LOWER(Preferred Email) END"),
             Text("material_type", Material)]),
         "Renewals" => new("etl.alma_renewals", [
-            Zero(), Text("campus_name", "Campus Name"), Text("author", "Author"), Text("barcode", "Barcode"),
+            Text("campus_name", "Campus Name"), Text("author", "Author"), Text("barcode", "Barcode"),
             Text("item_id", "Item Id"), Text("item_loan_id", "Item Loan Id"), Text("loan_status", "Loan Status"),
             Text("mms_id", "MMS Id"), Text("title", "Title"), Text("item_policy", "Item Policy"),
             Text("phone_number", "Preferred Phone Number"), Text("renewal_campus_name", "Renewal Campus Name"),
@@ -42,17 +40,20 @@ internal sealed record AlmaTableMapping(string Table, IReadOnlyList<AlmaTableCol
 
     public void ValidateSchema(IReadOnlyList<AnalyticsColumn> actual)
     {
-        if (actual.Count != Columns.Count)
+        if (actual.Count(c => c.Id != "Column0") != Columns.Count)
             throw new InvalidOperationException($"{Table}: cambió el número de columnas de Analytics; actualiza el mapeo antes de cargar.");
         var byId = actual.ToDictionary(c => c.Id);
         for (int i = 0; i < Columns.Count; i++)
         {
             var expected = Columns[i];
-            if (!byId.TryGetValue($"Column{i}", out var column) || column.Type != expected.XmlType ||
+            if (!byId.TryGetValue(SourceColumnId(i), out var column) || column.Type != expected.XmlType ||
                 Normalize(column.Heading) != Normalize(expected.Heading))
-                throw new InvalidOperationException($"{Table}: cambió Column{i}; se canceló la carga para evitar asignaciones incorrectas.");
+                throw new InvalidOperationException($"{Table}: cambió {SourceColumnId(i)}; se canceló la carga para evitar asignaciones incorrectas.");
         }
     }
+
+    // Analytics reserva Column0 como auxiliar; las columnas del reporte empiezan en Column1.
+    public static string SourceColumnId(int index) => $"Column{index + 1}";
 
     public object? ConvertValue(int index, string? value)
     {
@@ -61,8 +62,6 @@ internal sealed record AlmaTableMapping(string Table, IReadOnlyList<AlmaTableCol
         if (column.DbType == NpgsqlDbType.Text) return value;
         if (column.DbType == NpgsqlDbType.Date && DateOnly.TryParseExact(value, "yyyy-MM-dd",
                 CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) return date;
-        if (column.DbType == NpgsqlDbType.Integer && int.TryParse(value, NumberStyles.Integer,
-                CultureInfo.InvariantCulture, out var integer)) return integer;
         if (column.DbType == NpgsqlDbType.Double && double.TryParse(value, NumberStyles.Float,
                 CultureInfo.InvariantCulture, out var number) && double.IsFinite(number)) return number;
         throw new InvalidOperationException($"{Table}: valor no válido para {column.Name}; se canceló la carga.");
