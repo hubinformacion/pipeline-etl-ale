@@ -52,14 +52,6 @@ BEGIN
 
     -- PostgreSQL computes these values for existing rows and when importing new rows.
     ALTER TABLE etl.libcal_bookings
-        ADD COLUMN IF NOT EXISTS booking_month text GENERATED ALWAYS AS (
-            (ARRAY['enero','febrero','marzo','abril','mayo','junio',
-                   'julio','agosto','septiembre','octubre','noviembre','diciembre'])
-                [EXTRACT(MONTH FROM starts_at AT TIME ZONE 'America/Lima')::int]
-        ) STORED,
-        ADD COLUMN IF NOT EXISTS "booking_month#" integer GENERATED ALWAYS AS (
-            EXTRACT(MONTH FROM starts_at AT TIME ZONE 'America/Lima')::int
-        ) STORED,
         ADD COLUMN IF NOT EXISTS booking_date date GENERATED ALWAYS AS (
             (starts_at AT TIME ZONE 'America/Lima')::date
         ) STORED,

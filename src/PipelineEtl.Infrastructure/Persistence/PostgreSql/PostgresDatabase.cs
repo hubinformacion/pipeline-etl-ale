@@ -31,7 +31,16 @@ public sealed class PostgresDatabase : IAsyncDisposable
         {
             await using var connection = await DataSource.OpenConnectionAsync(cancellationToken);
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-            foreach (var name in new[] { "001_alma_reports.sql", "002_elogim_sessions.sql", "003_libcal_bookings.sql", "005_libcal_canonical_columns.sql", "006_libcal_report_fields.sql" })
+            string[] scripts =
+            [
+                "001_alma_reports.sql",
+                "002_elogim_sessions.sql",
+                "003_libcal_bookings.sql",
+                "005_libcal_canonical_columns.sql",
+                "006_libcal_report_fields.sql",
+                "007_libcal_remove_month_columns.sql"
+            ];
+            foreach (var name in scripts)
             {
                 using var stream = typeof(PostgresDatabase).Assembly.GetManifestResourceStream(
                     "PipelineEtl.Infrastructure.Persistence.PostgreSql." + name)
