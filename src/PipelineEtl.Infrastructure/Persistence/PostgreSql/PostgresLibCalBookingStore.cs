@@ -1,0 +1,91 @@
+using System.Text.Json;
+using Npgsql;
+using NpgsqlTypes;
+using PipelineEtl.Application.Abstractions;
+using PipelineEtl.Domain;
+
+namespace PipelineEtl.Infrastructure.Persistence.PostgreSql;
+
+public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCalBookingStore, IAsyncDisposable
+{
+    private readonly PostgresDatabase database = new(connectionString);
+
+    public async Task<long> ReplaceDayAsync(
+        DateOnly date, IAsyncEnumerable<LibCalBookingPage> pages, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var connection = await database.DataSource.OpenConnectionAsync(cancellationToken);
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var command = new NpgsqlCommand("SET LOCAL lock_timeout = '30s'", connection, transaction))
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            await using (var command = new NpgsqlCommand("SELECT pg_advisory_xact_lock(51003, $1)", connection, transaction))
+            {
+                command.Parameters.AddWithValue(date.DayNumber);
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+            await using (var command = new NpgsqlCommand(
+                "DELETE FROM etl.libcal_bookings WHERE extraction_date = $1", connection, transaction))
+            {
+                command.Parameters.AddWithValue(date);
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            long count = 0;
+            var loadedAt = DateTime.UtcNow;
+            await using (var importer = await connection.BeginBinaryImportAsync("""
+                COPY etl.libcal_bookings (extraction_date, row_number, loaded_at,
+                    source_row_id, booking_id, category_id, category_name, campus_id, campus_name,
+                    starts_at, ends_at, user_email, user_name, user_lastname, account,
+                    resource_name, reservation_status, check_in_status, form_answer_1, form_answer_2, raw_payload)
+                FROM STDIN (FORMAT BINARY)
+                """, cancellationToken))
+            {
+                await foreach (var page in pages.WithCancellation(cancellationToken))
+                foreach (var booking in page.Bookings)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    using var payload = JsonDocument.Parse(booking.PayloadJson);
+                    await importer.StartRowAsync(cancellationToken);
+                    await importer.WriteAsync(date, NpgsqlDbType.Date, cancellationToken);
+                    await importer.WriteAsync(++count, NpgsqlDbType.Bigint, cancellationToken);
+                    await importer.WriteAsync(loadedAt, NpgsqlDbType.TimestampTz, cancellationToken);
+                    foreach (var value in new[] { booking.RowId, booking.BookingId, page.Category.Id,
+                                 page.Category.Name, page.Category.LocationId, page.Category.LocationName })
+                        await importer.WriteAsync(value, NpgsqlDbType.Text, cancellationToken);
+                    await importer.WriteAsync(booking.StartsAt.UtcDateTime, NpgsqlDbType.TimestampTz, cancellationToken);
+                    await importer.WriteAsync(booking.EndsAt.UtcDateTime, NpgsqlDbType.TimestampTz, cancellationToken);
+                    foreach (var field in new[] { "email", "firstName", "lastName", "account", "item_name",
+                                 "status", "check_in_status", "q25459", "q25460" })
+                    {
+                        var value = ReadText(payload.RootElement, field);
+                        if (value is null) await importer.WriteNullAsync(cancellationToken);
+                        else await importer.WriteAsync(value, NpgsqlDbType.Text, cancellationToken);
+                    }
+                    await importer.WriteAsync(booking.PayloadJson, NpgsqlDbType.Jsonb, cancellationToken);
+                }
+                await importer.CompleteAsync(cancellationToken);
+            }
+            await transaction.CommitAsync(cancellationToken);
+            return count;
+        }
+        catch (NpgsqlException ex)
+        {
+            throw new InvalidOperationException("LibCal: no se pudo confirmar la foto PostgreSQL. Revisa conexión, permisos y esquema. Código: " + (ex.SqlState ?? "conexión") + ". La foto anterior se conserva si la transacción no se confirmó.");
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException("LibCal: una reserva contiene JSON inválido; foto no confirmada.");
+        }
+    }
+
+    private static string? ReadText(JsonElement row, string field)
+    {
+        if (!row.TryGetProperty(field, out var value) || value.ValueKind == JsonValueKind.Null) return null;
+        if (value.ValueKind != JsonValueKind.String)
+            throw new InvalidOperationException($"LibCal: cambió el tipo del campo {field}; foto no confirmada.");
+        return value.GetString();
+    }
+
+    public ValueTask DisposeAsync() => database.DisposeAsync();
+}

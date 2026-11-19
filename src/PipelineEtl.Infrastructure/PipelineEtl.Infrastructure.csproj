@@ -17,5 +17,6 @@
   <ItemGroup>
     <EmbeddedResource Include="Persistence/PostgreSql/001_alma_reports.sql" />
     <EmbeddedResource Include="Persistence/PostgreSql/002_elogim_sessions.sql" />
+    <EmbeddedResource Include="Persistence/PostgreSql/003_libcal_bookings.sql" />
   </ItemGroup>
 </Project>

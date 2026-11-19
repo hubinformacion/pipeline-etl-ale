@@ -17,6 +17,21 @@ public sealed class ExtractLibCalBookings(ILibCalClient client, IReadOnlyList<Li
     public async IAsyncEnumerable<LibCalExtractionProgress> RunAsync(
         DateOnly date, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        long rows = 0;
+        await foreach (var page in ValidatedPagesAsync(date, cancellationToken))
+        {
+            if (page.Page == 1) rows = 0;
+            rows += page.Bookings.Count;
+            yield return new LibCalExtractionProgress(page.Category, page.Page, rows, page.IsFinished);
+        }
+    }
+
+    public Task<long> LoadAsync(DateOnly date, ILibCalBookingStore store, CancellationToken cancellationToken) =>
+        store.ReplaceDayAsync(date, ValidatedPagesAsync(date, cancellationToken), cancellationToken);
+
+    private async IAsyncEnumerable<LibCalBookingPage> ValidatedPagesAsync(
+        DateOnly date, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
         ValidateCategories();
         var zone = TimeZoneInfo.FindSystemTimeZoneById(ExtractionPlanner.TimeZoneId);
         var midnight = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
@@ -26,10 +41,10 @@ public sealed class ExtractLibCalBookings(ILibCalClient client, IReadOnlyList<Li
         foreach (var category in categories)
         {
             int pages = 0;
-            long rows = 0;
             bool finished = false;
             await foreach (var page in client.ReadPagesAsync(category, date, cancellationToken))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (finished || page.Category != category || page.Page != pages + 1)
                     throw new InvalidOperationException("LibCal: secuencia de páginas inválida; extracción incompleta.");
                 foreach (var booking in page.Bookings)
@@ -38,9 +53,8 @@ public sealed class ExtractLibCalBookings(ILibCalClient client, IReadOnlyList<Li
                         throw new InvalidOperationException($"LibCal/categoría {category.Id}: una reserva no corresponde al día de uso solicitado.");
                 }
                 pages++;
-                rows += page.Bookings.Count;
                 finished = page.IsFinished;
-                yield return new LibCalExtractionProgress(category, pages, rows, finished);
+                yield return page;
             }
             if (!finished)
                 throw new InvalidOperationException($"LibCal/categoría {category.Id}: extracción incompleta.");

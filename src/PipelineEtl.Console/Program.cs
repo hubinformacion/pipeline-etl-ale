@@ -18,6 +18,7 @@ if (args is ["--help"])
     Console.WriteLine("Cargar Elogim en PostgreSQL: --load-elogim [--date YYYY-MM-DD] (reemplaza D−1 en transacción).");
     Console.WriteLine("Inspección Elogim: --inspect-elogim (requiere ELOGIM_CONNECTION_STRING; solo nombres y tipos).");
     Console.WriteLine("LibCal: --inspect-libcal o --extract-libcal [--date YYYY-MM-DD] (D, reservas de uso; sin persistencia).");
+    Console.WriteLine("Cargar LibCal: --load-libcal [--date YYYY-MM-DD] (foto completa D; no admite días pasados).");
     Console.WriteLine("Sin fecha: hoy en America/Lima. Sin fuente: all. Solo calcula fechas; no extrae datos.");
     return 0;
 }
@@ -31,7 +32,7 @@ try
     {
         await using var database = new PostgresDatabase(GetPostgresConnectionString());
         await database.InitializeAsync(cancellation.Token);
-        Console.WriteLine("Esquema etl y tablas alma_loans/alma_renewals/elogim_sessions preparados. No se cargaron datos.");
+        Console.WriteLine("Esquema etl, tablas Alma/Elogim/LibCal y vista libcal_report preparados. No se cargaron datos.");
         return 0;
     }
 
@@ -66,13 +67,14 @@ try
 
     var inspectLibCal = args.Contains("--inspect-libcal");
     var extractLibCal = args.Contains("--extract-libcal");
+    var loadLibCal = args.Contains("--load-libcal");
     var extractElogim = args.Contains("--extract-elogim");
     var loadElogim = args.Contains("--load-elogim");
     var extractAlma = args.Contains("--extract-alma");
     var loadAlma = args.Contains("--load-alma");
-    if (args.Count(a => a is "--extract-alma" or "--load-alma" or "--extract-elogim" or "--load-elogim" or "--inspect-libcal" or "--extract-libcal") > 1)
+    if (args.Count(a => a is "--extract-alma" or "--load-alma" or "--extract-elogim" or "--load-elogim" or "--inspect-libcal" or "--extract-libcal" or "--load-libcal") > 1)
         throw new ArgumentException("Elige solo un modo de extracción o carga, sin repetirlo.");
-    args = args.Where(a => a is not ("--extract-alma" or "--load-alma" or "--extract-elogim" or "--load-elogim" or "--inspect-libcal" or "--extract-libcal")).ToArray();
+    args = args.Where(a => a is not ("--extract-alma" or "--load-alma" or "--extract-elogim" or "--load-elogim" or "--inspect-libcal" or "--extract-libcal" or "--load-libcal")).ToArray();
 
     DateOnly? requestedDate = null;
     string source = "all";
@@ -98,13 +100,13 @@ try
         throw new ArgumentException("La extracción/carga de Alma solo admite --source alma.");
     if ((extractElogim || loadElogim) && seen.Contains("--source") && source != "elogim")
         throw new ArgumentException("La extracción de Elogim solo admite --source elogim.");
-    if ((inspectLibCal || extractLibCal) && seen.Contains("--source") && source != "libcal")
-        throw new ArgumentException("La inspección/extracción de LibCal solo admite --source libcal.");
-    var plan = ExtractionPlanner.Create(referenceDate, extractAlma || loadAlma ? "alma" : extractElogim || loadElogim ? "elogim" : inspectLibCal || extractLibCal ? "libcal" : source);
+    if ((inspectLibCal || extractLibCal || loadLibCal) && seen.Contains("--source") && source != "libcal")
+        throw new ArgumentException("La inspección/extracción/carga de LibCal solo admite --source libcal.");
+    var plan = ExtractionPlanner.Create(referenceDate, extractAlma || loadAlma ? "alma" : extractElogim || loadElogim ? "elogim" : inspectLibCal || extractLibCal || loadLibCal ? "libcal" : source);
     Console.WriteLine($"Fecha de referencia: {referenceDate:yyyy-MM-dd} ({ExtractionPlanner.TimeZoneId})");
     foreach (var day in plan)
         Console.WriteLine($"{day.Source}: {day.Date:yyyy-MM-dd}");
-    if (inspectLibCal || extractLibCal)
+    if (inspectLibCal || extractLibCal || loadLibCal)
     {
         var clientId = Environment.GetEnvironmentVariable("LIBCAL_CLIENT_ID");
         var clientSecret = Environment.GetEnvironmentVariable("LIBCAL_CLIENT_SECRET");
@@ -129,6 +131,13 @@ try
             Console.WriteLine("Campos observados (no incluye valores):");
             foreach (var field in allFields.OrderBy(f => f.Key))
                 Console.WriteLine($"  {field.Key} | {string.Join(", ", field.Value.Order())}");
+        }
+        else if (loadLibCal)
+        {
+            await using var store = new PostgresLibCalBookingStore(GetPostgresConnectionString());
+            Console.WriteLine("LibCal: reemplazando foto D de todas las categorías en una transacción; incluye canceladas, tentativas y denegadas.");
+            var count = await extraction.LoadAsync(plan.Single().Date, store, cancellation.Token);
+            Console.WriteLine($"LibCal: carga confirmada; {count} filas; {categories.Count} categorías. Reporte disponible en etl.libcal_report.");
         }
         else
         {
