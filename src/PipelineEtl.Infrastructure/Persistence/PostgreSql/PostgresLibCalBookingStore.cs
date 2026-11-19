@@ -63,6 +63,7 @@ public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCa
                 }
                 await importer.CompleteAsync(cancellationToken);
             }
+            await PostgresLoadStatus.RecordAsync(connection, transaction, "etl.libcal_bookings", date, count, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return count;
         }

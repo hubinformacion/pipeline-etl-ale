@@ -54,6 +54,7 @@ public sealed class PostgresElogimSessionStore(string connectionString) : IElogi
                 }
                 await importer.CompleteAsync(cancellationToken);
             }
+            await PostgresLoadStatus.RecordAsync(connection, transaction, "etl.elogim_sessions", date, count, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return count;
         }

@@ -31,6 +31,28 @@ public sealed class PostgresDatabase : IAsyncDisposable
         {
             await using var connection = await DataSource.OpenConnectionAsync(cancellationToken);
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using (var bootstrap = new NpgsqlCommand("""
+                SET LOCAL lock_timeout = '30s';
+                SELECT pg_advisory_xact_lock(51000, 0);
+                DO $$
+                BEGIN
+                    IF to_regclass('etl.schema_migrations') IS NULL THEN
+                        CREATE SCHEMA IF NOT EXISTS etl;
+                        CREATE TABLE etl.schema_migrations (
+                            name text PRIMARY KEY,
+                            applied_at timestamptz NOT NULL DEFAULT clock_timestamp()
+                        );
+                    END IF;
+                END $$;
+                """, connection, transaction))
+                await bootstrap.ExecuteNonQueryAsync(cancellationToken);
+
+            await using var applied = new NpgsqlCommand("SELECT name FROM etl.schema_migrations", connection, transaction);
+            var appliedNames = new HashSet<string>(StringComparer.Ordinal);
+            await using (var rows = await applied.ExecuteReaderAsync(cancellationToken))
+                while (await rows.ReadAsync(cancellationToken))
+                    appliedNames.Add(rows.GetString(0));
+
             string[] scripts =
             [
                 "001_alma_reports.sql",
@@ -39,16 +61,22 @@ public sealed class PostgresDatabase : IAsyncDisposable
                 "005_libcal_canonical_columns.sql",
                 "006_libcal_report_fields.sql",
                 "007_libcal_remove_month_columns.sql",
-                "008_alma_remove_source_column0.sql"
+                "008_alma_remove_source_column0.sql",
+                "009_load_status.sql"
             ];
             foreach (var name in scripts)
             {
+                if (appliedNames.Contains(name)) continue;
                 using var stream = typeof(PostgresDatabase).Assembly.GetManifestResourceStream(
                     "PipelineEtl.Infrastructure.Persistence.PostgreSql." + name)
                     ?? throw new InvalidOperationException("No se encontró el script inicial de PostgreSQL.");
                 using var reader = new StreamReader(stream);
                 await using var command = new NpgsqlCommand(await reader.ReadToEndAsync(cancellationToken), connection, transaction);
                 await command.ExecuteNonQueryAsync(cancellationToken);
+                await using var record = new NpgsqlCommand(
+                    "INSERT INTO etl.schema_migrations (name) VALUES ($1)", connection, transaction);
+                record.Parameters.AddWithValue(name);
+                await record.ExecuteNonQueryAsync(cancellationToken);
             }
             await transaction.CommitAsync(cancellationToken);
         }

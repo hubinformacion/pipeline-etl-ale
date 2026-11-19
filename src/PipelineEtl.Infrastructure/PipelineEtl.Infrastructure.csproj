@@ -22,5 +22,6 @@
     <EmbeddedResource Include="Persistence/PostgreSql/006_libcal_report_fields.sql" />
     <EmbeddedResource Include="Persistence/PostgreSql/007_libcal_remove_month_columns.sql" />
     <EmbeddedResource Include="Persistence/PostgreSql/008_alma_remove_source_column0.sql" />
+    <EmbeddedResource Include="Persistence/PostgreSql/009_load_status.sql" />
   </ItemGroup>
 </Project>

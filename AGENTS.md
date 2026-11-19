@@ -212,3 +212,9 @@ El usuario autorizó retirar los períodos derivados. 007 elimina booking_month 
 Migración 008: elimina source_column0 de las dos tablas Alma. Analytics mantiene sus IDs originales; el importador ignora Column0 y sigue validando Column1 en adelante. Verificado localmente con filas existentes en las dos tablas y dos inicializaciones consecutivas.
 
 Prueba manual conjunta de GitHub Actions https://github.com/hubinformacion/pipeline-etl-ale/actions/runs/44571809816: commit 254384f, D=2026-11-19, source=all, job 51 segundos. --init-db success en Neon. Logs de confirmación: LibCal D=2026-11-19, 511 filas y 14 categorías; Loans D−2=2026-11-17, 247 filas/18 columnas; Renewals misma fecha, 19 filas/17 columnas; Elogim D−1=2026-11-18, 1543 filas/5 columnas. Contraste de valores en Neon pendiente; evidencia de escritura proviene de los mensajes posteriores al commit. Workflow 423069134 activo, 03:00 UTC del 20/11 equivale a 22:00 Lima del 19/11.
+
+## Preparación para la primera captura nocturna
+
+Por decisión del usuario, retirar los datos de prueba antes de la captura nocturna. El alcance del vaciado autorizado son las cuatro tablas ETL y etl.load_status. Conservar el esquema, los demás objetos y etl.schema_migrations. No dejar un comando de vaciado en main ni un workflow persistente.
+
+--init-db registra cada script por nombre en etl.schema_migrations y serializa la inicialización con lock51000. Los scripts existentes idempotentes se ejecutan una última vez al crear este registro. Desde entonces agregar archivos nuevos para cambios de esquema. etl.load_status almacena la última carga confirmada por dataset y fecha, con su conteo y hora; se escribe en la transacción de cada reemplazo. Cero es una carga confirmada sin filas; ausencia significa que no hay confirmación registrada. Un fallo se consulta en Actions y conserva cualquier carga previa confirmada.
