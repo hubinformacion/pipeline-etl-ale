@@ -18,6 +18,6 @@
     <EmbeddedResource Include="Persistence/PostgreSql/001_alma_reports.sql" />
     <EmbeddedResource Include="Persistence/PostgreSql/002_elogim_sessions.sql" />
     <EmbeddedResource Include="Persistence/PostgreSql/003_libcal_bookings.sql" />
-    <EmbeddedResource Include="Persistence/PostgreSql/004_libcal_report_columns.sql" />
+    <EmbeddedResource Include="Persistence/PostgreSql/005_libcal_canonical_columns.sql" />
   </ItemGroup>
 </Project>

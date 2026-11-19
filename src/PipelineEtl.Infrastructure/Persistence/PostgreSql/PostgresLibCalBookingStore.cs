@@ -35,9 +35,8 @@ public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCa
             var loadedAt = DateTime.UtcNow;
             await using (var importer = await connection.BeginBinaryImportAsync("""
                 COPY etl.libcal_bookings (extraction_date, row_number, loaded_at,
-                    source_row_id, booking_id, category_id, category_name, campus_id, campus_name,
-                    starts_at, ends_at, user_email, user_name, user_lastname, account,
-                    resource_name, reservation_status, check_in_status, form_answer_1, form_answer_2, raw_payload)
+                    source_row_id, booking_id, category_id, booking_category, campus_id, booking_campus,
+                    starts_at, ends_at, user_email, user_name, user_lastname, booking_resource, raw_payload)
                 FROM STDIN (FORMAT BINARY)
                 """, cancellationToken))
             {
@@ -55,8 +54,7 @@ public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCa
                         await importer.WriteAsync(value, NpgsqlDbType.Text, cancellationToken);
                     await importer.WriteAsync(booking.StartsAt.UtcDateTime, NpgsqlDbType.TimestampTz, cancellationToken);
                     await importer.WriteAsync(booking.EndsAt.UtcDateTime, NpgsqlDbType.TimestampTz, cancellationToken);
-                    foreach (var field in new[] { "email", "firstName", "lastName", "account", "item_name",
-                                 "status", "check_in_status", "q25459", "q25460" })
+                    foreach (var field in new[] { "email", "firstName", "lastName", "item_name" })
                     {
                         var value = ReadText(payload.RootElement, field);
                         if (value is null) await importer.WriteNullAsync(cancellationToken);
