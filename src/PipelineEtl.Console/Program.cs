@@ -122,6 +122,10 @@ try
             await foreach (var sample in extraction.InspectAsync(plan.Single().Date, cancellation.Token))
             {
                 Console.WriteLine($"{sample.Category.LocationName} / {sample.Category.Name} (cid {sample.Category.Id}): muestra {sample.SampleRowCount}; puede haber más: {sample.HasMore}.");
+                var questions = sample.Fields.Where(f => f.Name.Length > 1 && f.Name[0] == 'q' &&
+                    f.Name.Skip(1).All(char.IsAsciiDigit));
+                foreach (var question in questions)
+                    Console.WriteLine($"  {question.Name}: {question.NonBlankCount}/{sample.SampleRowCount} con respuesta.");
                 foreach (var field in sample.Fields)
                 {
                     if (!allFields.TryGetValue(field.Name, out var types)) allFields[field.Name] = types = [];

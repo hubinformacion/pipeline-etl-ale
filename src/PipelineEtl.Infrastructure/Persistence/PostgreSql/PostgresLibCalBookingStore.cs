@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
 using PipelineEtl.Application.Abstractions;
@@ -36,7 +35,8 @@ public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCa
             await using (var importer = await connection.BeginBinaryImportAsync("""
                 COPY etl.libcal_bookings (extraction_date, row_number, loaded_at,
                     source_row_id, booking_id, category_id, booking_category, campus_id, booking_campus,
-                    starts_at, ends_at, user_email, user_name, user_lastname, booking_resource, raw_payload)
+                    starts_at, ends_at, user_email, user_name, user_lastname, booking_resource,
+                    booking_status, booking_confirmation, booking_phone, booking_participant_2_email, booking_participant_3_email)
                 FROM STDIN (FORMAT BINARY)
                 """, cancellationToken))
             {
@@ -44,7 +44,6 @@ public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCa
                 foreach (var booking in page.Bookings)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    using var payload = JsonDocument.Parse(booking.PayloadJson);
                     await importer.StartRowAsync(cancellationToken);
                     await importer.WriteAsync(date, NpgsqlDbType.Date, cancellationToken);
                     await importer.WriteAsync(++count, NpgsqlDbType.Bigint, cancellationToken);
@@ -54,13 +53,13 @@ public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCa
                         await importer.WriteAsync(value, NpgsqlDbType.Text, cancellationToken);
                     await importer.WriteAsync(booking.StartsAt.UtcDateTime, NpgsqlDbType.TimestampTz, cancellationToken);
                     await importer.WriteAsync(booking.EndsAt.UtcDateTime, NpgsqlDbType.TimestampTz, cancellationToken);
-                    foreach (var field in new[] { "email", "firstName", "lastName", "item_name" })
+                    foreach (var value in new[] { booking.UserEmail, booking.UserName, booking.UserLastname,
+                                 booking.Resource, booking.Status, booking.Confirmation, booking.Phone,
+                                 booking.Participant2Email, booking.Participant3Email })
                     {
-                        var value = ReadText(payload.RootElement, field);
                         if (value is null) await importer.WriteNullAsync(cancellationToken);
                         else await importer.WriteAsync(value, NpgsqlDbType.Text, cancellationToken);
                     }
-                    await importer.WriteAsync(booking.PayloadJson, NpgsqlDbType.Jsonb, cancellationToken);
                 }
                 await importer.CompleteAsync(cancellationToken);
             }
@@ -71,18 +70,6 @@ public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCa
         {
             throw new InvalidOperationException("LibCal: no se pudo confirmar la foto PostgreSQL. Revisa conexión, permisos y esquema. Código: " + (ex.SqlState ?? "conexión") + ". La foto anterior se conserva si la transacción no se confirmó.");
         }
-        catch (JsonException)
-        {
-            throw new InvalidOperationException("LibCal: una reserva contiene JSON inválido; foto no confirmada.");
-        }
-    }
-
-    private static string? ReadText(JsonElement row, string field)
-    {
-        if (!row.TryGetProperty(field, out var value) || value.ValueKind == JsonValueKind.Null) return null;
-        if (value.ValueKind != JsonValueKind.String)
-            throw new InvalidOperationException($"LibCal: cambió el tipo del campo {field}; foto no confirmada.");
-        return value.GetString();
     }
 
     public ValueTask DisposeAsync() => database.DisposeAsync();

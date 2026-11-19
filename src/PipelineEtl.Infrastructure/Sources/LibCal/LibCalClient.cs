@@ -29,6 +29,7 @@ public sealed class LibCalClient(
         using var document = await GetPageAsync(category, date, 1, 25, cancellationToken);
         ValidateRequest(category, date);
         var fields = new Dictionary<string, HashSet<string>>();
+        var nonBlankCounts = new Dictionary<string, int>();
         foreach (var row in document.RootElement.EnumerateArray())
         {
             RequireObject(row);
@@ -37,11 +38,16 @@ public sealed class LibCalClient(
                 if (!fields.TryGetValue(property.Name, out var types))
                     fields[property.Name] = types = [];
                 types.Add(property.Value.ValueKind.ToString());
+                if (property.Value.ValueKind == JsonValueKind.Number ||
+                    (property.Value.ValueKind == JsonValueKind.String &&
+                     !string.IsNullOrWhiteSpace(property.Value.GetString())))
+                    nonBlankCounts[property.Name] = nonBlankCounts.GetValueOrDefault(property.Name) + 1;
             }
         }
         var count = document.RootElement.GetArrayLength();
         return new LibCalInspection(category, count, count == 25,
-            fields.OrderBy(f => f.Key).Select(f => new LibCalField(f.Key, f.Value.Order().ToArray())).ToArray());
+            fields.OrderBy(f => f.Key).Select(f => new LibCalField(
+                f.Key, f.Value.Order().ToArray(), nonBlankCounts.GetValueOrDefault(f.Key))).ToArray());
     }
 
     public async IAsyncEnumerable<LibCalBookingPage> ReadPagesAsync(
@@ -63,8 +69,7 @@ public sealed class LibCalClient(
                 RequireObject(row);
                 VerifyFilter(row, "cid", category.Id);
                 VerifyFilter(row, "lid", category.LocationId);
-                bookings.Add(new LibCalBooking(ReadId(row, "id"), ReadId(row, "bookId"),
-                    ReadDate(row, "fromDate"), ReadDate(row, "toDate"), row.GetRawText()));
+                bookings.Add(MapBooking(row, category));
             }
             bool finished = bookings.Count < PageSize;
             yield return new LibCalBookingPage(category, page, bookings, finished);
@@ -165,6 +170,66 @@ public sealed class LibCalClient(
     {
         if (row.ValueKind != JsonValueKind.Object)
             throw new InvalidOperationException("LibCal: una reserva no es un objeto JSON.");
+    }
+
+    private static LibCalBooking MapBooking(JsonElement row, LibCalCategory category)
+    {
+        // LibCal returns each answer as q<ID>. Only group spaces ask for participants.
+        var groupBooking = category.Name == "Espacios grupales";
+        return new LibCalBooking(
+            ReadId(row, "id"), ReadId(row, "bookId"),
+            ReadDate(row, "fromDate"), ReadDate(row, "toDate"),
+            ReadText(row, "email"), ReadText(row, "firstName"), ReadText(row, "lastName"),
+            ReadText(row, "item_name"), NormalizeStatus(ReadText(row, "status")),
+            NormalizeAttendance(ReadText(row, "check_in_status")),
+            ReadAnswer(row, "q25458"),
+            groupBooking ? ReadAnswer(row, "q25459") : null,
+            groupBooking ? ReadAnswer(row, "q25460") : null);
+    }
+
+    private static string? NormalizeStatus(string? value)
+    {
+        var status = value?.Trim().ToLowerInvariant();
+        if (status is not null &&
+            Regex.IsMatch(status, @"^cancell?(ed|eb)($|\s+by\s+)", RegexOptions.CultureInvariant))
+            return "Cancelado";
+
+        return status switch
+        {
+            "confirmed" => "Confirmado",
+            "tentative" => "Tentativo",
+            "mediated tentative" => "Tentativo (mediación)",
+            "denied" => "Denegado",
+            "mediated denied" => "Denegado (mediación)",
+            _ => value
+        };
+    }
+
+    private static string? NormalizeAttendance(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "in" or "out" => "Asistió",
+        "-" => "Sin registro de asistencia",
+        _ => value
+    };
+
+    private static string? ReadAnswer(JsonElement row, string name)
+    {
+        if (!row.TryGetProperty(name, out var field) || field.ValueKind == JsonValueKind.Null)
+            return null;
+        // Numeric phone answers can arrive as JSON numbers. Store them as text.
+        var answer = name == "q25458" && field.ValueKind == JsonValueKind.Number
+            ? field.GetRawText()
+            : ReadText(row, name)?.Trim();
+        return string.IsNullOrEmpty(answer) ? null : answer;
+    }
+
+    private static string? ReadText(JsonElement row, string name)
+    {
+        if (!row.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (value.ValueKind != JsonValueKind.String)
+            throw new InvalidOperationException($"LibCal: cambió el tipo del campo {name}; foto no confirmada.");
+        return value.GetString();
     }
 
     private static string ReadId(JsonElement row, string name)
