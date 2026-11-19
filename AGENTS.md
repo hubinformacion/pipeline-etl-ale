@@ -82,7 +82,8 @@ Avanzar una etapa a la vez, con cambios pequeños. Antes de cada etapa explicar 
 - [x] LibCal: usuario ejecutó extracción real D2026-11-18;790filas/14categorías, incluidas páginas adicionales.
 - [x] LibCal: usuario compartió --inspect-libcal y confirmó las equivalencias del reporte: correo completo, estado de reserva, asistencia y cálculos locales.
 - [x] LibCal: foto D completa en transacción y columnas finales en una sola tabla; pruebas PostgreSQL y HTTP simuladas pasaron.
-- [ ] LibCal: validar carga real en Neon y contraste con interfaz/reporte; pendiente configurar secretos de LibCal y probar el workflow conjunto.
+- [x] LibCal: secretos presentes, carga real y workflow conjunto confirmados en run 44571809816.
+- [ ] Contrastar en Neon el teléfono y participantes por categoría con LibCal y verificar el primer disparo nocturno con las tres fuentes.
 - [ ] Observabilidad: mover al final, antes del cierre operativo.
 - [ ] Functions y cambio de motor: diferidos.
 
@@ -154,7 +155,7 @@ Si se decide cambiar de motor, adaptar proveedor, migraciones y SQL en Infrastru
 
 ## Próxima sesión
 
-Siguiente paso: migrar Neon con --init-db y validar el reporte desde etl.libcal_bookings. Confirmar cobertura de q25458 (teléfono), q25459 y q25460 (participantes) por categoría con --inspect-libcal, que solo imprime conteos de respuestas por pregunta. Configurar LIBCAL_CLIENT_ID y LIBCAL_CLIENT_SECRET en GitHub y validar un dispatch libcal para hoy en Lima. Validar el próximo disparo nocturno. La extracción real de referencia previa tuvo 790 filas/14 categorías el 2026-11-18; fue un conteo momentáneo. El usuario aprobó foto de D a las 22:00 Lima; biblioteca cierra a las 21:00. La ruta no permite recuperar días pasados.
+Siguiente paso: verificar la ejecución programada de las 22:00 Lima con las tres fuentes y contrastar en Neon la cobertura de teléfono y participantes de LibCal con reservas del origen. La prueba manual conjunta del 2026-11-19 fue exitosa y aplicó las migraciones en Neon. La foto LibCal de la noche reemplaza la del mismo día; no se puede recuperar otro día por esta ruta. El usuario indicó retomar las validaciones al día siguiente.
 
 ## Operación y decisiones de ejecución
 
@@ -209,3 +210,5 @@ Verificado: compilación Release, migración repetida desde esquema anterior con
 El usuario autorizó retirar los períodos derivados. 007 elimina booking_month y "booking_month#" sin afectar las filas. No había columnas equivalentes que retirar en Alma ni Elogim. Para reportes usar loan_date, renewal_date, fecha_sesion y booking_date. Agrupar por inicio de mes (incluye año) y formatear la etiqueta en el reporte. Compilación Release y migración repetida sobre PostgreSQL local con dos reservas verificadas. Aplicación en Neon y validación de la ejecución conjunta nocturna siguen pendientes.
 
 Migración 008: elimina source_column0 de las dos tablas Alma. Analytics mantiene sus IDs originales; el importador ignora Column0 y sigue validando Column1 en adelante. Verificado localmente con filas existentes en las dos tablas y dos inicializaciones consecutivas.
+
+Prueba manual conjunta de GitHub Actions https://github.com/hubinformacion/pipeline-etl-ale/actions/runs/44571809816: commit 254384f, D=2026-11-19, source=all, job 51 segundos. --init-db success en Neon. Logs de confirmación: LibCal D=2026-11-19, 511 filas y 14 categorías; Loans D−2=2026-11-17, 247 filas/18 columnas; Renewals misma fecha, 19 filas/17 columnas; Elogim D−1=2026-11-18, 1543 filas/5 columnas. Contraste de valores en Neon pendiente; evidencia de escritura proviene de los mensajes posteriores al commit. Workflow 423069134 activo, 03:00 UTC del 20/11 equivale a 22:00 Lima del 19/11.
