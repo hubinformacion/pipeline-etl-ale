@@ -18,7 +18,7 @@ if (args is ["--help"])
     Console.WriteLine("Cargar Elogim en PostgreSQL: --load-elogim [--date YYYY-MM-DD] (reemplaza D−1 en transacción).");
     Console.WriteLine("Inspección Elogim: --inspect-elogim (requiere ELOGIM_CONNECTION_STRING; solo nombres y tipos).");
     Console.WriteLine("LibCal: --inspect-libcal o --extract-libcal [--date YYYY-MM-DD] (D, reservas de uso; sin persistencia).");
-    Console.WriteLine("Cargar LibCal: --load-libcal [--date YYYY-MM-DD] (foto completa D; no admite días pasados).");
+    Console.WriteLine("Cargar LibCal: --load-libcal [--date YYYY-MM-DD] (foto completa D; solo admite hoy en Perú).");
     Console.WriteLine("Sin fecha: hoy en America/Lima. Sin fuente: all. Solo calcula fechas; no extrae datos.");
     return 0;
 }
@@ -32,7 +32,7 @@ try
     {
         await using var database = new PostgresDatabase(GetPostgresConnectionString());
         await database.InitializeAsync(cancellation.Token);
-        Console.WriteLine("Esquema etl, tablas Alma/Elogim/LibCal y vista libcal_report preparados. No se cargaron datos.");
+        Console.WriteLine("Esquema etl y tablas Alma/Elogim/LibCal preparados. No se cargaron datos.");
         return 0;
     }
 
@@ -137,7 +137,7 @@ try
             await using var store = new PostgresLibCalBookingStore(GetPostgresConnectionString());
             Console.WriteLine("LibCal: reemplazando foto D de todas las categorías en una transacción; incluye canceladas, tentativas y denegadas.");
             var count = await extraction.LoadAsync(plan.Single().Date, store, cancellation.Token);
-            Console.WriteLine($"LibCal: carga confirmada; {count} filas; {categories.Count} categorías. Reporte disponible en etl.libcal_report.");
+            Console.WriteLine($"LibCal: carga confirmada; {count} filas; {categories.Count} categorías. Reporte disponible en etl.libcal_bookings.");
         }
         else
         {
@@ -180,7 +180,7 @@ try
         var extraction = new ExtractAlmaReports(new AlmaAnalyticsClient(httpClient, apiKey));
         if (loadAlma)
         {
-            await using var store = CreateStore();
+            await using var store = new PostgresAlmaReportStore(GetPostgresConnectionString());
             Console.WriteLine("Cargando Loans y Renewals. Cada reporte/día se confirma por separado; repetir el día reemplaza sus filas.");
             await foreach (var progress in extraction.LoadAsync(plan.Single().Date, store, cancellation.Token))
                 Console.WriteLine($"{progress.Report}: carga confirmada; {progress.RowCount} filas; {progress.PageCount} páginas; {progress.ColumnCount} columnas.");
@@ -224,8 +224,6 @@ catch (InvalidOperationException ex)
     Console.Error.WriteLine(ex.Message);
     return 1;
 }
-
-static PostgresAlmaReportStore CreateStore() => new(GetPostgresConnectionString());
 
 static string GetPostgresConnectionString()
 {

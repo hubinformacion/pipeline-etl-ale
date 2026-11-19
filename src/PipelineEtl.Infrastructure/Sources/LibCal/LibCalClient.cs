@@ -75,8 +75,8 @@ public sealed class LibCalClient(
 
     private void ValidateRequest(LibCalCategory category, DateOnly date)
     {
-        if (date < ExtractionPlanner.Today(clock.GetUtcNow()))
-            throw new ArgumentException("LibCal: /space/bookings ignora fechas pasadas. No se consultará ni reemplazará un día histórico con esta ruta.");
+        if (date != ExtractionPlanner.Today(clock.GetUtcNow()))
+            throw new ArgumentException("LibCal: la extracción solo admite la fecha de hoy en America/Lima. No se cargará una fecha distinta.");
         if (!long.TryParse(category.Id, out var categoryId) || categoryId <= 0 ||
             !long.TryParse(category.LocationId, out var locationId) || locationId <= 0)
             throw new ArgumentException("LibCal: categoría y ubicación deben tener identificadores numéricos válidos.");

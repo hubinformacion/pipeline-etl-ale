@@ -3,112 +3,84 @@
     "Id": "42378",
     "Name": "Computadoras y laptops",
     "LocationId": "20116",
-    "LocationName": "Campus Instituto",
-    "SourceName": "Computadoras",
-    "FormId": "8254"
+    "LocationName": "Campus Instituto"
   },
   {
     "Id": "42377",
     "Name": "Espacios grupales",
     "LocationId": "20116",
-    "LocationName": "Campus Instituto",
-    "SourceName": "Espacios grupales",
-    "FormId": "8253"
+    "LocationName": "Campus Instituto"
   },
   {
     "Id": "42358",
     "Name": "Computadoras y laptops",
     "LocationId": "20109",
-    "LocationName": "Campus Huancayo",
-    "SourceName": "Computadoras y Laptops",
-    "FormId": "8254"
+    "LocationName": "Campus Huancayo"
   },
   {
     "Id": "42357",
     "Name": "Espacios grupales",
     "LocationId": "20109",
-    "LocationName": "Campus Huancayo",
-    "SourceName": "Espacios grupales",
-    "FormId": "8253"
+    "LocationName": "Campus Huancayo"
   },
   {
     "Id": "53609",
     "Name": "Kindle",
     "LocationId": "20109",
-    "LocationName": "Campus Huancayo",
-    "SourceName": "Kindle",
-    "FormId": "8254"
+    "LocationName": "Campus Huancayo"
   },
   {
     "Id": "42369",
     "Name": "Computadoras y laptops",
     "LocationId": "20110",
-    "LocationName": "Campus Arequipa",
-    "SourceName": "Computadoras y Laptops",
-    "FormId": "8254"
+    "LocationName": "Campus Arequipa"
   },
   {
     "Id": "42368",
     "Name": "Espacios grupales",
     "LocationId": "20110",
-    "LocationName": "Campus Arequipa",
-    "SourceName": "Espacios grupales",
-    "FormId": "8253"
+    "LocationName": "Campus Arequipa"
   },
   {
     "Id": "42373",
     "Name": "Computadoras y laptops",
     "LocationId": "20114",
-    "LocationName": "Campus Cusco",
-    "SourceName": "Computadoras",
-    "FormId": "8254"
+    "LocationName": "Campus Cusco"
   },
   {
     "Id": "42372",
     "Name": "Espacios grupales",
     "LocationId": "20114",
-    "LocationName": "Campus Cusco",
-    "SourceName": "Espacios grupales",
-    "FormId": "8253"
+    "LocationName": "Campus Cusco"
   },
   {
     "Id": "53604",
     "Name": "Kindle",
     "LocationId": "20114",
-    "LocationName": "Campus Cusco",
-    "SourceName": "Kindle",
-    "FormId": "8254"
+    "LocationName": "Campus Cusco"
   },
   {
     "Id": "42375",
     "Name": "Computadoras y laptops",
     "LocationId": "20115",
-    "LocationName": "Campus Los Olivos",
-    "SourceName": "Computadoras y Laptops",
-    "FormId": "0"
+    "LocationName": "Campus Los Olivos"
   },
   {
     "Id": "42374",
     "Name": "Espacios grupales",
     "LocationId": "20115",
-    "LocationName": "Campus Los Olivos",
-    "SourceName": "Espacios grupales",
-    "FormId": "8253"
+    "LocationName": "Campus Los Olivos"
   },
   {
     "Id": "49251",
     "Name": "Espacios grupales",
     "LocationId": "23350",
-    "LocationName": "Campus Ica",
-    "SourceName": "Espacios grupales",
-    "FormId": "8253"
+    "LocationName": "Campus Ica"
   },
   {
     "Id": "49252",
     "Name": "Computadoras y laptops",
     "LocationId": "23350",
-    "LocationName": "Campus Ica",
-    "SourceName": "Computadoras y Laptops",
-    "FormId": "8254"
+    "LocationName": "Campus Ica"
   }
 ]

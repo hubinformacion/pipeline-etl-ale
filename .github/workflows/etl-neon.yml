@@ -2,12 +2,12 @@ name: ETL diario a Neon
 
 on:
   schedule:
-    - cron: '0 22 * * *'
-      timezone: America/Lima
+    # 03:00 UTC = 22:00 del día anterior en Lima.
+    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
       reference_date:
-        description: 'Fecha de referencia D (YYYY-MM-DD): Alma D−2 y Elogim D−1'
+        description: 'Fecha D (YYYY-MM-DD): Alma D−2, Elogim D−1, LibCal D solo hoy en Lima'
         required: true
         type: string
       source:
@@ -19,6 +19,7 @@ on:
           - all
           - alma
           - elogim
+          - libcal
 
 permissions:
   contents: read
@@ -44,7 +45,11 @@ jobs:
         shell: bash
         run: |
           if [[ "$EVENT_NAME" == 'schedule' ]]; then
-            REFERENCE_DATE="$(TZ=America/Lima date +%F)"
+            read -r REFERENCE_DATE LOCAL_HOUR <<< "$(TZ=America/Lima date '+%F %H')"
+            if [[ "$GITHUB_RUN_ATTEMPT" != '1' || ! "$LOCAL_HOUR" =~ ^(22|23)$ ]]; then
+              echo '::error::Ejecución programada fuera de la ventana original (22:00–23:59 Lima) o reintentada. Usa ejecución manual con fecha explícita para Alma y Elogim.'
+              exit 1
+            fi
             SELECTED_SOURCE=all
           fi
           if [[ ! "$REFERENCE_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] ||
@@ -54,8 +59,8 @@ jobs:
             exit 1
           fi
           case "$SELECTED_SOURCE" in
-            all|alma|elogim) ;;
-            *) echo 'Fuente válida: all, alma o elogim.' >&2; exit 1 ;;
+            all|alma|elogim|libcal) ;;
+            *) echo 'Fuente válida: all, alma, elogim o libcal.' >&2; exit 1 ;;
           esac
           echo "reference_date=$REFERENCE_DATE" >> "$GITHUB_OUTPUT"
           echo "source=$SELECTED_SOURCE" >> "$GITHUB_OUTPUT"
@@ -76,6 +81,28 @@ jobs:
       - name: Compilar consola
         id: build
         run: dotnet build src/PipelineEtl.Console/PipelineEtl.Console.csproj --configuration Release --no-restore
+
+      - name: Cargar LibCal
+        id: libcal
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && (steps.plan.outputs.source == 'all' || steps.plan.outputs.source == 'libcal') }}
+        env:
+          REFERENCE_DATE: ${{ steps.plan.outputs.reference_date }}
+          LIBCAL_CLIENT_ID: ${{ secrets.LIBCAL_CLIENT_ID }}
+          LIBCAL_CLIENT_SECRET: ${{ secrets.LIBCAL_CLIENT_SECRET }}
+          NEON_CONNECTION_STRING: ${{ secrets.NEON_CONNECTION_STRING }}
+        shell: bash
+        run: |
+          if [[ -z "$LIBCAL_CLIENT_ID" || -z "$LIBCAL_CLIENT_SECRET" || -z "$NEON_CONNECTION_STRING" ]]; then
+            echo '::error::Falta configurar LIBCAL_CLIENT_ID, LIBCAL_CLIENT_SECRET o NEON_CONNECTION_STRING.'
+            exit 1
+          fi
+          if [[ "$REFERENCE_DATE" != "$(TZ=America/Lima date +%F)" ]]; then
+            echo '::error::LibCal solo se puede cargar para hoy en Lima. Para fechas históricas, selecciona alma o elogim.'
+            exit 1
+          fi
+          app=src/PipelineEtl.Console/bin/Release/net10.0/PipelineEtl.Console.dll
+          timeout --kill-after=15s 2m dotnet "$app" --init-db
+          timeout --kill-after=15s 10m dotnet "$app" --load-libcal --date "$REFERENCE_DATE"
 
       - name: Cargar Alma (Loans y Renewals)
         id: alma
@@ -115,6 +142,7 @@ jobs:
           REFERENCE_DATE: ${{ steps.plan.outputs.reference_date }}
           ALMA_OUTCOME: ${{ steps.alma.outcome }}
           ELOGIM_OUTCOME: ${{ steps.elogim.outcome }}
+          LIBCAL_OUTCOME: ${{ steps.libcal.outcome }}
         shell: bash
         run: |
           {
@@ -124,4 +152,5 @@ jobs:
             echo '| --- | --- |'
             echo "| Alma (D−2) | $ALMA_OUTCOME |"
             echo "| Elogim (D−1) | $ELOGIM_OUTCOME |"
+            echo "| LibCal (D) | $LIBCAL_OUTCOME |"
           } >> "$GITHUB_STEP_SUMMARY"

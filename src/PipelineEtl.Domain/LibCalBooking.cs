@@ -1,7 +1,7 @@
 namespace PipelineEtl.Domain;
 
 public sealed record LibCalCategory(
-    string Id, string Name, string LocationId, string LocationName, string SourceName, string FormId);
+    string Id, string Name, string LocationId, string LocationName);
 
 public sealed record LibCalBooking(
     string RowId, string BookingId, DateTimeOffset StartsAt, DateTimeOffset EndsAt, string PayloadJson);
