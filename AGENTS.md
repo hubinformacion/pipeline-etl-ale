@@ -34,7 +34,7 @@ Extraer periódicamente datos de Alma/Analytics, Springshare/LibCal y Elogim/Mar
 
 ## Fechas solicitadas
 
-Alma: D−2; LibCal: D; Elogim: D−1. Interpretación provisional: un día calendario específico por origen, no un rango acumulado. America/Lima y un único día calendario por fuente fueron confirmados por el usuario. Horario único confirmado: 22:00 America/Lima. LibCal solo consulta hoy en Lima. Alma ya tiene filtros y columnas confirmados.
+Alma: D−2; LibCal: D; Elogim: D−1. Interpretación provisional: un día calendario específico por origen, no un rango acumulado. America/Lima y un único día calendario por fuente fueron confirmados por el usuario. Ventana nocturna confirmada desde las 22:00 America/Lima; disparo operativo ajustado a las 22:07 tras el retraso del 19/11. LibCal solo consulta hoy en Lima. Alma ya tiene filtros y columnas confirmados.
 
 ## Pendientes de producto
 
@@ -65,7 +65,7 @@ Avanzar una etapa a la vez, con cambios pequeños. Antes de cada etapa explicar 
 - [x] Workflow inicial Alma → Neon validado; ahora se sustituye por un workflow conjunto.
 - [x] Secretos configurados y verificados por nombre. El usuario confirmó ausencia de tarjeta/método de pago en la cuenta propietaria y autorizó usar cuota gratuita.
 - [x] Primera ejecución remota exitosa: run 44371949917; D=2026-11-18, objetivo 2026-11-16, Loans=225 filas, Renewals=38 filas, job=39 segundos.
-- [x] Programación diaria de Alma autorizada por el usuario: 22:00 America/Lima. Workflow usa cron 0 3 * * * en UTC; conserva dispatch manual.
+- [x] Programación diaria de Alma autorizada por el usuario: 22:00 America/Lima. Workflow usa cron 7 3 * * * en UTC; conserva dispatch manual.
 - [x] Primera ejecución automática observada: run 44513732333, 2026-11-19 a 06:19 Lima. El workflow anterior tomó D=2026-11-19. Se corrigió el cron a UTC explícito y se protege la ventana nocturna; verificar próximo disparo.
 - [x] Elogim: inspección y extracción local implementadas; pruebas con MariaDB temporal y usuario SELECT.
 - [x] Elogim real: usuario confirmó conexión exitosa tras SSL Mode=Disabled y esquema: fecha_sesion DATETIME y cuatro VARCHAR, todos NOT NULL.
@@ -160,7 +160,7 @@ Siguiente paso: verificar la ejecución programada de las 22:00 Lima con las tre
 ## Operación y decisiones de ejecución
 
 - Un workflow, runner ubuntu-24.04 y compilación Release única. Carga LibCal, Alma y Elogim como pasos independientes. Dispatch con fecha explícita y opción all/alma/elogim/libcal. Para históricos seleccionar alma o elogim.
-- Cron UTC 0 3 * * * equivale a 22:00 Lima. Un disparo nocturno fija D una vez y la comparte por GITHUB_OUTPUT. Acepta intentos iniciales que empiezan entre las 22:00 y medianoche. El disparo fuera de esa ventana o reintentado falla antes de cargar. Usar dispatch con fecha explícita para recuperar Alma/Elogim. LibCal valida de nuevo el día antes y después de consultar cada página. GitHub puede retrasar u omitir disparos.
+- Cron UTC 7 3 * * * equivale a 22:07 Lima y evita la punta en el minuto cero. Un disparo nocturno fija D una vez y la comparte por GITHUB_OUTPUT. Acepta intentos iniciales que empiezan entre las 22:00 y medianoche. El disparo fuera de esa ventana o reintentado falla antes de cargar. Usar dispatch con fecha explícita para recuperar Alma/Elogim. LibCal valida de nuevo el día antes y después de consultar cada página. GitHub puede retrasar u omitir disparos.
 - Los pasos de fuente continúan si otra fuente falla y el job queda fallido. El esquema Neon se prepara una vez antes de las cargas, incluso en dispatch de una sola fuente (límite 2 min). La carga de LibCal tiene límite de 10 min. --source all por sí solo sigue siendo planificación.
 - Secretos confirmados solo por nombre: ALMA_API_KEY, ELOGIM_CONNECTION_STRING y NEON_CONNECTION_STRING. LIBCAL_CLIENT_ID y LIBCAL_CLIENT_SECRET también verificados por nombre el 2026-11-19. El usuario confirmó ausencia de tarjeta y autorizó cuota gratuita. No cambiar facturación.
 - Workflows antiguos Alma422966584 y Elogim423059081 fueron eliminados; API confirma state=deleted. Intento de disable de Alma respondió403 por no estar activo; no es un bloqueo de permisos ni requiere aprobación/ampliar acceso. Solo ETL conjunto423069134 activo; evitar dos schedules. Grupo nuevo etl-neon, sin cancelar carga activa; timeout30min. Acciones fijadas por SHA, permisos contents:read, sin artefactos de datos.
@@ -220,3 +220,5 @@ Por decisión del usuario, retirar los datos de prueba antes de la captura noctu
 --init-db registra cada script por nombre en etl.schema_migrations y serializa la inicialización con lock51000. Los scripts existentes idempotentes se ejecutan una última vez al crear este registro. Desde entonces agregar archivos nuevos para cambios de esquema. etl.load_status almacena la última carga confirmada por dataset y fecha, con su conteo y hora; se escribe en la transacción de cada reemplazo. Cero es una carga confirmada sin filas; ausencia significa que no hay confirmación registrada. Un fallo se consulta en Actions y conserva cualquier carga previa confirmada.
 
 Vaciado real confirmado por el run manual https://github.com/hubinformacion/pipeline-etl-ale/actions/runs/44573855585. Al confirmar la transacción, las cuatro tablas de datos y load_status quedaron en cero; schema_migrations conservó 8 entradas. Rama temporal de operación retirada. Workflow principal activo y cron 03:00 UTC (22:00 Lima). Próxima validación: comprobar la captura nocturna y sus cuatro registros en etl.load_status, y contrastar formularios LibCal con el origen.
+
+El disparo previsto para el 19/11 a las 22:00 Lima se creó el 20/11 a las 05:52 Lima (run 44722812308). El job inició cuatro segundos después y la guarda rechazó la fecha antes de cargar. Se movió el cron al minuto 07 siguiendo la recomendación de GitHub para reducir retrasos, manteniendo la ventana y la protección LibCal. Pendiente observar un disparo real del cron nuevo.

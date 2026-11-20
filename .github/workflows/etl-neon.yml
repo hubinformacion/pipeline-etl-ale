@@ -2,8 +2,8 @@ name: ETL diario a Neon
 
 on:
   schedule:
-    # 03:00 UTC = 22:00 del día anterior en Lima.
-    - cron: '0 3 * * *'
+    # 03:07 UTC = 22:07 del día anterior en Lima. Evita el inicio de la hora.
+    - cron: '7 3 * * *'
   workflow_dispatch:
     inputs:
       reference_date:
