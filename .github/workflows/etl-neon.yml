@@ -4,8 +4,9 @@ on:
   schedule:
     # 03:07 UTC = 22:07 del día anterior en Lima. Evita el inicio de la hora.
     - cron: '7 3 * * *'
-    # Prueba puntual: 20/11/2026 a las 17:45 Lima (22:45 UTC).
-    - cron: '45 22 20 11 *'
+    # Prueba puntual: 20/11/2026 a las 17:50 Lima con zona IANA.
+    - cron: '50 17 20 11 *'
+      timezone: 'America/Lima'
   workflow_dispatch:
     inputs:
       reference_date:
@@ -50,10 +51,10 @@ jobs:
           if [[ "$EVENT_NAME" == 'schedule' ]]; then
             read -r REFERENCE_DATE LOCAL_HOUR LOCAL_MINUTE <<< "$(TZ=America/Lima date '+%F %H %M')"
             echo "Cron recibido: $EVENT_SCHEDULE. Hora del runner en Lima: $REFERENCE_DATE $LOCAL_HOUR:$LOCAL_MINUTE."
-            if [[ "$EVENT_SCHEDULE" == '45 22 20 11 *' ]]; then
+            if [[ "$EVENT_SCHEDULE" == '50 17 20 11 *' ]]; then
               if [[ "$GITHUB_RUN_ATTEMPT" != '1' || "$REFERENCE_DATE" != '2026-11-20' ||
-                    "$LOCAL_HOUR" != '17' ]] || (( 10#$LOCAL_MINUTE < 45 )); then
-                echo '::error::La prueba puntual solo acepta el primer intento del 20/11 entre las 17:45 y las 17:59 Lima.'
+                    "$LOCAL_HOUR" != '17' ]] || (( 10#$LOCAL_MINUTE < 50 )); then
+                echo '::error::La prueba puntual solo acepta el primer intento del 20/11 entre las 17:50 y las 17:59 Lima.'
                 exit 1
               fi
             elif [[ "$GITHUB_RUN_ATTEMPT" != '1' || ! "$LOCAL_HOUR" =~ ^(22|23)$ ]]; then
