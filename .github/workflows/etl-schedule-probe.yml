@@ -1,0 +1,37 @@
+name: Diagnóstico de disparos programados
+
+on:
+  schedule:
+    - cron: '3 23 20 11 *' # 18:03 Lima, UTC implícito
+    - cron: '11 18 20 11 *' # 18:11 Lima, zona explícita
+      timezone: 'America/Lima'
+    - cron: '19 23 20 11 *' # 18:19 Lima, UTC explícito
+      timezone: 'Etc/UTC'
+
+permissions: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Comparar hora programada con la hora de inicio
+        env:
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+        shell: bash
+        run: |
+          case "$EVENT_SCHEDULE" in
+            '3 23 20 11 *') planned='2026-11-20 23:03:00 UTC' ;;
+            '11 18 20 11 *') planned='2026-11-20 23:11:00 UTC' ;;
+            '19 23 20 11 *') planned='2026-11-20 23:19:00 UTC' ;;
+            *) echo 'Cron inesperado' >&2; exit 1 ;;
+          esac
+          now="$(date +%s)"
+          expected="$(date -d "$planned" +%s)"
+          {
+            echo "Cron: $EVENT_SCHEDULE"
+            echo "Hora prevista UTC: $planned"
+            echo "Inicio UTC: $(date -u -d "@$now" '+%F %T %Z')"
+            echo "Inicio Lima: $(TZ=America/Lima date -d "@$now" '+%F %T %z')"
+            echo "Diferencia en segundos: $((now - expected))"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
