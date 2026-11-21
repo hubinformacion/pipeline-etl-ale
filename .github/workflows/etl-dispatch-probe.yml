@@ -1,0 +1,42 @@
+name: Diagnóstico de disparo externo
+
+on:
+  workflow_dispatch:
+    inputs:
+      scheduled_at:
+        description: Hora programada por Cloudflare en UTC
+        required: true
+        type: string
+      worker_started_at:
+        description: Hora real de inicio del Worker en UTC
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Comparar horarios
+        env:
+          SCHEDULED_AT: ${{ inputs.scheduled_at }}
+          WORKER_STARTED_AT: ${{ inputs.worker_started_at }}
+        shell: bash
+        run: |
+          iso_utc='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$'
+          if [[ ! "$SCHEDULED_AT" =~ $iso_utc || ! "$WORKER_STARTED_AT" =~ $iso_utc ]]; then
+            echo 'Se esperaban dos fechas ISO en UTC.' >&2
+            exit 1
+          fi
+          scheduled="$(date -u -d "$SCHEDULED_AT" +%s)"
+          worker="$(date -u -d "$WORKER_STARTED_AT" +%s)"
+          runner="$(date -u +%s)"
+          {
+            echo "Hora programada en Lima: $(TZ=America/Lima date -d "@$scheduled" '+%F %T %z')"
+            echo "Inicio del Worker en Lima: $(TZ=America/Lima date -d "@$worker" '+%F %T %z')"
+            echo "Hora de comprobación en el runner: $(TZ=America/Lima date -d "@$runner" '+%F %T %z')"
+            echo "Demora hasta el Worker: $((worker - scheduled)) s"
+            echo "Tiempo del Worker hasta el runner: $((runner - worker)) s"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
