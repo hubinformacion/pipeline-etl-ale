@@ -11,7 +11,8 @@ export default {
     const workerStartedAt = new Date().toISOString();
     const response = await fetch(dispatchUrl, {
       method: "POST",
-      redirect: "error",
+      // Workers supports "manual"; the status check rejects redirects without forwarding the token.
+      redirect: "manual",
       headers: {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${env.GITHUB_DISPATCH_TOKEN}`,
