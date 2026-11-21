@@ -1,9 +1,6 @@
 name: ETL diario a Neon
 
 on:
-  schedule:
-    # 03:07 UTC = 22:07 del día anterior en Lima. Evita el inicio de la hora.
-    - cron: '7 3 * * *'
   workflow_dispatch:
     inputs:
       reference_date:
@@ -41,19 +38,8 @@ jobs:
         env:
           REFERENCE_DATE: ${{ inputs.reference_date }}
           SELECTED_SOURCE: ${{ inputs.source }}
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_SCHEDULE: ${{ github.event.schedule }}
         shell: bash
         run: |
-          if [[ "$EVENT_NAME" == 'schedule' ]]; then
-            read -r REFERENCE_DATE LOCAL_HOUR LOCAL_MINUTE <<< "$(TZ=America/Lima date '+%F %H %M')"
-            echo "Cron recibido: $EVENT_SCHEDULE. Hora del runner en Lima: $REFERENCE_DATE $LOCAL_HOUR:$LOCAL_MINUTE."
-            if [[ "$GITHUB_RUN_ATTEMPT" != '1' || ! "$LOCAL_HOUR" =~ ^(22|23)$ ]]; then
-              echo '::error::Ejecución programada fuera de la ventana original (22:00–23:59 Lima) o reintentada. Usa ejecución manual con fecha explícita para Alma y Elogim.'
-              exit 1
-            fi
-            SELECTED_SOURCE=all
-          fi
           if [[ ! "$REFERENCE_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] ||
              ! NORMALIZED_DATE="$(date -d "$REFERENCE_DATE" +%F)" ||
              [[ "$NORMALIZED_DATE" != "$REFERENCE_DATE" ]]; then
