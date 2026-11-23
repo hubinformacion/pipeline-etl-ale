@@ -1,0 +1,29 @@
+name: Probar adelanto del cron de GitHub
+
+on:
+  schedule:
+    # 24/11 a las 14:07 Lima, ocho horas antes del objetivo de las 22:07.
+    - cron: '7 19 24 11 *'
+
+permissions: {}
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Medir la hora efectiva en Lima
+        env:
+          TZ: America/Lima
+        shell: bash
+        run: |
+          scheduled=$(date -d '2026-11-24 14:07:00' +%s)
+          target=$(date -d '2026-11-24 22:07:00' +%s)
+          now=$(date +%s)
+          {
+            echo "Cron previsto en Lima: $(date -d "@$scheduled" '+%F %T %z')"
+            echo "Hora objetivo en Lima: $(date -d "@$target" '+%F %T %z')"
+            echo "Hora efectiva en Lima: $(date -d "@$now" '+%F %T %z')"
+            echo "Retraso desde el cron: $((now - scheduled)) s"
+            echo "Diferencia respecto a la hora objetivo: $((now - target)) s"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
