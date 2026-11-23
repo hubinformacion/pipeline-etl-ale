@@ -83,7 +83,8 @@ Avanzar una etapa a la vez, con cambios pequeños. Antes de cada etapa explicar 
 - [x] LibCal: usuario compartió --inspect-libcal y confirmó las equivalencias del reporte: correo completo, estado de reserva, asistencia y cálculos locales.
 - [x] LibCal: foto D completa en transacción y columnas finales en una sola tabla; pruebas PostgreSQL y HTTP simuladas pasaron.
 - [x] LibCal: secretos presentes, carga real y workflow conjunto confirmados en run 44571809816.
-- [ ] Contrastar en Neon el teléfono y participantes por categoría con LibCal y verificar el primer disparo nocturno con las tres fuentes.
+- [x] Dos disparos nocturnos de Cloudflare cargaron las tres fuentes en Neon (runs 44979216277 y 45104131567).
+- [ ] Contrastar en Neon el teléfono y participantes por categoría con LibCal.
 - [ ] Observabilidad: mover al final, antes del cierre operativo.
 - [ ] Functions y cambio de motor: diferidos.
 
@@ -155,7 +156,7 @@ Si se decide cambiar de motor, adaptar proveedor, migraciones y SQL en Infrastru
 
 ## Próxima sesión
 
-Siguiente paso: verificar la ejecución programada de las 22:00 Lima con las tres fuentes y contrastar en Neon la cobertura de teléfono y participantes de LibCal con reservas del origen. La prueba manual conjunta del 2026-11-19 fue exitosa y aplicó las migraciones en Neon. La foto LibCal de la noche reemplaza la del mismo día; no se puede recuperar otro día por esta ruta. El usuario indicó retomar las validaciones al día siguiente.
+Siguiente paso: contrastar en Neon la cobertura de teléfono y participantes de LibCal con reservas del origen. El disparo nocturno productivo por Cloudflare ya se verificó durante dos noches. La prueba manual conjunta del 2026-11-19 fue exitosa y aplicó las migraciones en Neon. La foto LibCal de la noche reemplaza la del mismo día; no se puede recuperar otro día por esta ruta. El usuario indicó retomar las validaciones al día siguiente.
 
 ## Operación y decisiones de ejecución
 
@@ -240,3 +241,5 @@ El diagnóstico Cloudflare → GitHub quedó confirmado en run 44916853990 (succ
 ## Comparación nocturna del 21 de noviembre
 
 Cloudflare muestra Runs at 03:07 AM porque el cron se evalúa en UTC. Es el mismo instante que las 22:07 del día anterior en Lima. El Worker ya configurado no requiere redeploy por mover su fuente a scripts/cloudflare-etl-trigger.mjs. En GitHub se dejó un workflow de diagnóstico separado, etl-github-schedule-check.yml, para el 21/11/2026 a las 22:07 Lima con zona explícita; no lee fuentes ni escribe en Neon. Comparar la hora de los dos disparos y retirar el diagnóstico después de observar el resultado (la expresión cron carece de campo año). Una ejecución puntual por sí sola no demuestra que el retraso intermitente esté resuelto.
+
+Resultado verificado el 23/11: Cloudflare inició el Worker las noches D=21/11 y D=22/11 a las 22:07:56.978 y 22:07:57.154 Lima; GitHub aceptó a las 22:07:58 en ambos casos. Runs 44979216277 y 45104131567 terminaron success. Logs de carga confirmada para D=21: LibCal467, Loans185, Renewals17 y Elogim1243 filas. Para D=22: LibCal237, Loans180, Renewals23 y Elogim1179 filas. Sin contraste SQL independiente de los registros. GitHub muestra estos runs como manuales por el evento workflow_dispatch, que Cloudflare invocó automáticamente. El cron nativo de comparación (run 45015787624) estaba previsto para el 21/11 a las 22:07 Lima y se ejecutó el 22/11 a las 06:07:57, con demora de 28857 s (8 h 57 s). Su resultado verde solo indica que pudo registrar la medición. Mantener Cloudflare para programar y GitHub Actions para ejecutar el ETL; se retiró el workflow de comparación y se preservó el historial.
