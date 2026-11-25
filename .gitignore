@@ -8,5 +8,7 @@
 
 .env.*
 !.env.example
+.dev.vars
+.dev.vars.*
 **/appsettings.Local.json
 **/secrets.json

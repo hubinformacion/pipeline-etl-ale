@@ -74,7 +74,7 @@ public sealed class PostgresAlmaReportStore : IAlmaReportStore, IAsyncDisposable
 
             await PostgresLoadStatus.RecordAsync(connection, transaction, mapping.Table, date, rowCount, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return new AlmaExtractionProgress(report, date, mapping.Columns.Count, pageCount, rowCount, true);
+            return new AlmaExtractionProgress(report, mapping.Columns.Count, pageCount, rowCount, true);
         }
         catch (NpgsqlException ex)
         {

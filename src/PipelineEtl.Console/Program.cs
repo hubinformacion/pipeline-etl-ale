@@ -19,7 +19,7 @@ if (args is ["--help"])
     Console.WriteLine("Inspección Elogim: --inspect-elogim (requiere ELOGIM_CONNECTION_STRING; solo nombres y tipos).");
     Console.WriteLine("LibCal: --inspect-libcal o --extract-libcal [--date YYYY-MM-DD] (D, reservas de uso; sin persistencia).");
     Console.WriteLine("Cargar LibCal: --load-libcal [--date YYYY-MM-DD] (foto completa D; solo admite hoy en Perú).");
-    Console.WriteLine("Sin fecha: hoy en America/Lima. Sin fuente: all. Solo calcula fechas; no extrae datos.");
+    Console.WriteLine("Sin fecha: hoy en America/Lima. Sin modo de extracción o carga: solo calcula las fechas.");
     return 0;
 }
 
@@ -65,16 +65,14 @@ try
         return 0;
     }
 
-    var inspectLibCal = args.Contains("--inspect-libcal");
-    var extractLibCal = args.Contains("--extract-libcal");
-    var loadLibCal = args.Contains("--load-libcal");
-    var extractElogim = args.Contains("--extract-elogim");
-    var loadElogim = args.Contains("--load-elogim");
-    var extractAlma = args.Contains("--extract-alma");
-    var loadAlma = args.Contains("--load-alma");
-    if (args.Count(a => a is "--extract-alma" or "--load-alma" or "--extract-elogim" or "--load-elogim" or "--inspect-libcal" or "--extract-libcal" or "--load-libcal") > 1)
+    var modes = args.Where(arg => arg is
+        "--extract-alma" or "--load-alma" or
+        "--extract-elogim" or "--load-elogim" or
+        "--inspect-libcal" or "--extract-libcal" or "--load-libcal").ToArray();
+    if (modes.Length > 1)
         throw new ArgumentException("Elige solo un modo de extracción o carga, sin repetirlo.");
-    args = args.Where(a => a is not ("--extract-alma" or "--load-alma" or "--extract-elogim" or "--load-elogim" or "--inspect-libcal" or "--extract-libcal" or "--load-libcal")).ToArray();
+    var mode = modes.SingleOrDefault();
+    args = args.Where(arg => arg != mode).ToArray();
 
     DateOnly? requestedDate = null;
     string source = "all";
@@ -96,17 +94,21 @@ try
     }
 
     var referenceDate = requestedDate ?? ExtractionPlanner.Today(DateTimeOffset.UtcNow);
-    if ((extractAlma || loadAlma) && seen.Contains("--source") && source != "alma")
-        throw new ArgumentException("La extracción/carga de Alma solo admite --source alma.");
-    if ((extractElogim || loadElogim) && seen.Contains("--source") && source != "elogim")
-        throw new ArgumentException("La extracción de Elogim solo admite --source elogim.");
-    if ((inspectLibCal || extractLibCal || loadLibCal) && seen.Contains("--source") && source != "libcal")
-        throw new ArgumentException("La inspección/extracción/carga de LibCal solo admite --source libcal.");
-    var plan = ExtractionPlanner.Create(referenceDate, extractAlma || loadAlma ? "alma" : extractElogim || loadElogim ? "elogim" : inspectLibCal || extractLibCal || loadLibCal ? "libcal" : source);
+    var modeSource = mode switch
+    {
+        "--extract-alma" or "--load-alma" => "alma",
+        "--extract-elogim" or "--load-elogim" => "elogim",
+        "--inspect-libcal" or "--extract-libcal" or "--load-libcal" => "libcal",
+        _ => null
+    };
+    if (modeSource is not null && seen.Contains("--source") && source != modeSource)
+        throw new ArgumentException($"{mode} solo admite --source {modeSource}.");
+
+    var plan = ExtractionPlanner.Create(referenceDate, modeSource ?? source);
     Console.WriteLine($"Fecha de referencia: {referenceDate:yyyy-MM-dd} ({ExtractionPlanner.TimeZoneId})");
     foreach (var day in plan)
         Console.WriteLine($"{day.Source}: {day.Date:yyyy-MM-dd}");
-    if (inspectLibCal || extractLibCal || loadLibCal)
+    if (modeSource == "libcal")
     {
         var clientId = Environment.GetEnvironmentVariable("LIBCAL_CLIENT_ID");
         var clientSecret = Environment.GetEnvironmentVariable("LIBCAL_CLIENT_SECRET");
@@ -115,7 +117,7 @@ try
         var categories = LoadLibCalCategories();
         using var httpClient = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(120) };
         var extraction = new ExtractLibCalBookings(new LibCalClient(httpClient, clientId, clientSecret), categories);
-        if (inspectLibCal)
+        if (mode == "--inspect-libcal")
         {
             Console.WriteLine("LibCal: primera página por categoría (hasta 25 filas); solo conteos y nombres/tipos de campos. Sin persistencia.");
             var allFields = new Dictionary<string, HashSet<string>>();
@@ -138,7 +140,7 @@ try
             foreach (var field in allFields.OrderBy(f => f.Key))
                 Console.WriteLine($"  {field.Key} | {string.Join(", ", field.Value.Order())}");
         }
-        else if (loadLibCal)
+        else if (mode == "--load-libcal")
         {
             await using var store = new PostgresLibCalBookingStore(GetPostgresConnectionString());
             Console.WriteLine("LibCal: reemplazando foto D de todas las categorías en una transacción; incluye canceladas, tentativas y denegadas.");
@@ -158,13 +160,13 @@ try
             Console.WriteLine($"LibCal: extracción completada; {total} filas; {categories.Count} categorías. Sin persistencia.");
         }
     }
-    else if (extractElogim || loadElogim)
+    else if (modeSource == "elogim")
     {
         var date = plan.Single().Date;
         var end = date.AddDays(1);
         Console.WriteLine($"Elogim: intervalo [{date:yyyy-MM-dd} 00:00:00, {end:yyyy-MM-dd} 00:00:00). Hora local Perú.");
         var extraction = new ExtractElogim(CreateElogimClient());
-        if (loadElogim)
+        if (mode == "--load-elogim")
         {
             await using var store = new PostgresElogimSessionStore(GetPostgresConnectionString());
             Console.WriteLine("Cargando Elogim. Repetir el día reemplaza sus filas; solo se confirma tras leer la consulta completa.");
@@ -177,14 +179,14 @@ try
             Console.WriteLine($"Elogim: extracción completada; {count} filas; 5 columnas. Sin persistencia.");
         }
     }
-    else if (extractAlma || loadAlma)
+    else if (modeSource == "alma")
     {
         var apiKey = Environment.GetEnvironmentVariable("ALMA_API_KEY");
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new ArgumentException("Configura ALMA_API_KEY en la terminal; no la escribas en el código.");
         using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
         var extraction = new ExtractAlmaReports(new AlmaAnalyticsClient(httpClient, apiKey));
-        if (loadAlma)
+        if (mode == "--load-alma")
         {
             await using var store = new PostgresAlmaReportStore(GetPostgresConnectionString());
             Console.WriteLine("Cargando Loans y Renewals. Cada reporte/día se confirma por separado; repetir el día reemplaza sus filas.");

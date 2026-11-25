@@ -8,4 +8,4 @@ public sealed record AnalyticsReportPage(
     bool IsFinished);
 
 public sealed record AlmaExtractionProgress(
-    string Report, DateOnly Date, int ColumnCount, int PageCount, long RowCount, bool IsFinished);
+    string Report, int ColumnCount, int PageCount, long RowCount, bool IsFinished);

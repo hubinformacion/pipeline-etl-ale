@@ -3,7 +3,6 @@
     <Project Path="src/PipelineEtl.Application/PipelineEtl.Application.csproj" />
     <Project Path="src/PipelineEtl.Console/PipelineEtl.Console.csproj" />
     <Project Path="src/PipelineEtl.Domain/PipelineEtl.Domain.csproj" />
-    <Project Path="src/PipelineEtl.Functions/PipelineEtl.Functions.csproj" />
     <Project Path="src/PipelineEtl.Infrastructure/PipelineEtl.Infrastructure.csproj" />
   </Folder>
 </Solution>

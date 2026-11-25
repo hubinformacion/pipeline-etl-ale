@@ -20,7 +20,7 @@ public sealed class ExtractAlmaReports(IAlmaAnalyticsClient client)
             {
                 rows += page.Rows.Count;
                 pages++;
-                yield return new AlmaExtractionProgress(report, date, page.Columns.Count, pages, rows, page.IsFinished);
+                yield return new AlmaExtractionProgress(report, page.Columns.Count, pages, rows, page.IsFinished);
             }
         }
     }

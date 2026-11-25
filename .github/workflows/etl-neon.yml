@@ -23,7 +23,7 @@ permissions:
 
 concurrency:
   group: etl-neon
-  cancel-in-progress: false
+  queue: max
 
 jobs:
   load:
