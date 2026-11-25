@@ -74,8 +74,8 @@ CREATE TABLE IF NOT EXISTS etl.libcal_bookings (
     booking_category text NOT NULL,
     campus_id text NOT NULL,
     booking_campus text NOT NULL,
-    starts_at timestamp with time zone NOT NULL,
-    ends_at timestamp with time zone NOT NULL,
+    booking_starts_at timestamp with time zone NOT NULL,
+    booking_ends_at timestamp with time zone NOT NULL,
     user_email text,
     user_name text,
     user_lastname text,
@@ -86,15 +86,10 @@ CREATE TABLE IF NOT EXISTS etl.libcal_bookings (
     booking_participant_2_email text,
     booking_participant_3_email text,
     booking_note text,
-    booking_account_email text GENERATED ALWAYS AS (user_email) STORED,
-    booking_date date GENERATED ALWAYS AS ((starts_at AT TIME ZONE 'America/Lima')::date) STORED,
-    booking_start time GENERATED ALWAYS AS ((starts_at AT TIME ZONE 'America/Lima')::time) STORED,
-    booking_end time GENERATED ALWAYS AS ((ends_at AT TIME ZONE 'America/Lima')::time) STORED,
-    booking_duration numeric GENERATED ALWAYS AS (EXTRACT(EPOCH FROM (ends_at - starts_at)) / 60) STORED,
     PRIMARY KEY (extraction_date, row_number),
-    CHECK (ends_at > starts_at),
-    CHECK ((starts_at AT TIME ZONE 'America/Lima')::date <= extraction_date
-       AND (ends_at AT TIME ZONE 'America/Lima') > extraction_date::timestamp)
+    CHECK (booking_ends_at > booking_starts_at),
+    CHECK ((booking_starts_at AT TIME ZONE 'America/Lima')::date <= extraction_date
+       AND (booking_ends_at AT TIME ZONE 'America/Lima') > extraction_date::timestamp)
 );
 
 CREATE TABLE IF NOT EXISTS etl.load_status (

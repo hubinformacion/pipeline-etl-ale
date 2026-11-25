@@ -35,7 +35,7 @@ public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCa
             await using (var importer = await connection.BeginBinaryImportAsync("""
                 COPY etl.libcal_bookings (extraction_date, row_number, loaded_at,
                     source_row_id, booking_id, category_id, booking_category, campus_id, booking_campus,
-                    starts_at, ends_at, user_email, user_name, user_lastname, booking_resource,
+                    booking_starts_at, booking_ends_at, user_email, user_name, user_lastname, booking_resource,
                     booking_status, booking_confirmation, booking_phone, booking_participant_2_email, booking_participant_3_email,
                     booking_note)
                 FROM STDIN (FORMAT BINARY)
