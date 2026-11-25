@@ -31,9 +31,8 @@ public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCa
             }
 
             long count = 0;
-            var loadedAt = DateTime.UtcNow;
             await using (var importer = await connection.BeginBinaryImportAsync("""
-                COPY etl.libcal_bookings (extraction_date, row_number, loaded_at,
+                COPY etl.libcal_bookings (extraction_date,
                     source_row_id, booking_id, category_id, booking_category, campus_id, booking_campus,
                     booking_starts_at, booking_ends_at, user_email, user_name, user_lastname, booking_resource,
                     booking_status, booking_confirmation, booking_phone, booking_participant_2_email, booking_participant_3_email,
@@ -47,8 +46,6 @@ public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCa
                     cancellationToken.ThrowIfCancellationRequested();
                     await importer.StartRowAsync(cancellationToken);
                     await importer.WriteAsync(date, NpgsqlDbType.Date, cancellationToken);
-                    await importer.WriteAsync(++count, NpgsqlDbType.Bigint, cancellationToken);
-                    await importer.WriteAsync(loadedAt, NpgsqlDbType.TimestampTz, cancellationToken);
                     foreach (var value in new[] { booking.RowId, booking.BookingId, page.Category.Id,
                                  page.Category.Name, page.Category.LocationId, page.Category.LocationName })
                         await importer.WriteAsync(value, NpgsqlDbType.Text, cancellationToken);
@@ -61,6 +58,7 @@ public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCa
                         if (value is null) await importer.WriteNullAsync(cancellationToken);
                         else await importer.WriteAsync(value, NpgsqlDbType.Text, cancellationToken);
                     }
+                    count++;
                 }
                 await importer.CompleteAsync(cancellationToken);
             }

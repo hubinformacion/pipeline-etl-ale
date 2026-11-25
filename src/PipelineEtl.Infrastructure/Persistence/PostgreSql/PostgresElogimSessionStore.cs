@@ -31,9 +31,8 @@ public sealed class PostgresElogimSessionStore(string connectionString) : IElogi
             }
 
             long count = 0;
-            var loadedAt = DateTime.UtcNow;
             await using (var importer = await connection.BeginBinaryImportAsync("""
-                COPY etl.elogim_sessions (extraction_date, row_number, loaded_at,
+                COPY etl.elogim_sessions (extraction_date,
                     fecha_sesion, user_email, identificacion, bd, tipo_consulta)
                 FROM STDIN (FORMAT BINARY)
                 """, cancellationToken))
@@ -43,14 +42,13 @@ public sealed class PostgresElogimSessionStore(string connectionString) : IElogi
                     cancellationToken.ThrowIfCancellationRequested();
                     await importer.StartRowAsync(cancellationToken);
                     await importer.WriteAsync(date, NpgsqlDbType.Date, cancellationToken);
-                    await importer.WriteAsync(++count, NpgsqlDbType.Bigint, cancellationToken);
-                    await importer.WriteAsync(loadedAt, NpgsqlDbType.TimestampTz, cancellationToken);
                     await importer.WriteAsync(session.FechaSesion, NpgsqlDbType.Timestamp, cancellationToken);
                     foreach (var value in new[] { session.UserEmail, session.Identificacion, session.Bd, session.TipoConsulta })
                     {
                         if (value is null) await importer.WriteNullAsync(cancellationToken);
                         else await importer.WriteAsync(value, NpgsqlDbType.Text, cancellationToken);
                     }
+                    count++;
                 }
                 await importer.CompleteAsync(cancellationToken);
             }

@@ -2,8 +2,6 @@ CREATE SCHEMA IF NOT EXISTS etl;
 
 CREATE TABLE IF NOT EXISTS etl.alma_loans (
     extraction_date date NOT NULL,
-    row_number bigint NOT NULL CHECK (row_number > 0),
-    loaded_at timestamp with time zone NOT NULL,
     phone_number text,
     campus_name text,
     circ_desk_name text,
@@ -22,14 +20,11 @@ CREATE TABLE IF NOT EXISTS etl.alma_loans (
     user_primary_identifier text,
     preferred_email text,
     material_type text,
-    PRIMARY KEY (extraction_date, row_number),
     CHECK (loan_date = extraction_date)
 );
 
 CREATE TABLE IF NOT EXISTS etl.alma_renewals (
     extraction_date date NOT NULL,
-    row_number bigint NOT NULL CHECK (row_number > 0),
-    loaded_at timestamp with time zone NOT NULL,
     campus_name text,
     author text,
     barcode text,
@@ -47,27 +42,21 @@ CREATE TABLE IF NOT EXISTS etl.alma_renewals (
     user_primary_identifier text,
     preferred_email text,
     renewals double precision,
-    PRIMARY KEY (extraction_date, row_number),
     CHECK (renewal_date = extraction_date)
 );
 
 CREATE TABLE IF NOT EXISTS etl.elogim_sessions (
     extraction_date date NOT NULL,
-    row_number bigint NOT NULL CHECK (row_number > 0),
-    loaded_at timestamp with time zone NOT NULL,
     fecha_sesion timestamp without time zone NOT NULL,
     user_email text NOT NULL,
     identificacion text NOT NULL,
     bd text NOT NULL,
     tipo_consulta text NOT NULL,
-    PRIMARY KEY (extraction_date, row_number),
     CHECK (fecha_sesion::date = extraction_date)
 );
 
 CREATE TABLE IF NOT EXISTS etl.libcal_bookings (
     extraction_date date NOT NULL,
-    row_number bigint NOT NULL CHECK (row_number > 0),
-    loaded_at timestamp with time zone NOT NULL,
     source_row_id text NOT NULL,
     booking_id text NOT NULL,
     category_id text NOT NULL,
@@ -86,11 +75,16 @@ CREATE TABLE IF NOT EXISTS etl.libcal_bookings (
     booking_participant_2_email text,
     booking_participant_3_email text,
     booking_note text,
-    PRIMARY KEY (extraction_date, row_number),
     CHECK (booking_ends_at > booking_starts_at),
     CHECK ((booking_starts_at AT TIME ZONE 'America/Lima')::date <= extraction_date
        AND (booking_ends_at AT TIME ZONE 'America/Lima') > extraction_date::timestamp)
 );
+
+-- Las cargas reemplazan un día completo y conservan los registros que comparten valores.
+CREATE INDEX IF NOT EXISTS alma_loans_extraction_date_idx ON etl.alma_loans (extraction_date);
+CREATE INDEX IF NOT EXISTS alma_renewals_extraction_date_idx ON etl.alma_renewals (extraction_date);
+CREATE INDEX IF NOT EXISTS elogim_sessions_extraction_date_idx ON etl.elogim_sessions (extraction_date);
+CREATE INDEX IF NOT EXISTS libcal_bookings_extraction_date_idx ON etl.libcal_bookings (extraction_date);
 
 CREATE TABLE IF NOT EXISTS etl.load_status (
     dataset text NOT NULL,

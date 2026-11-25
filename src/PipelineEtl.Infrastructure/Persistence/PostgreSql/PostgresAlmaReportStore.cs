@@ -40,7 +40,6 @@ public sealed class PostgresAlmaReportStore : IAlmaReportStore, IAsyncDisposable
             long rowCount = 0;
             int pageCount = 0;
             bool finished = false;
-            var loadedAt = DateTime.UtcNow;
             var columnNames = string.Join(", ", mapping.Columns.Select(c => c.Name));
             await foreach (var page in pages.WithCancellation(cancellationToken))
             {
@@ -49,14 +48,12 @@ public sealed class PostgresAlmaReportStore : IAlmaReportStore, IAsyncDisposable
                 mapping.ValidateSchema(page.Columns);
                 // COPY reduce viajes de red: se escribe una página cada vez, sin acumular el reporte.
                 await using var importer = await connection.BeginBinaryImportAsync(
-                    $"COPY {mapping.Table} (extraction_date, row_number, loaded_at, {columnNames}) FROM STDIN (FORMAT BINARY)", cancellationToken);
+                    $"COPY {mapping.Table} (extraction_date, {columnNames}) FROM STDIN (FORMAT BINARY)", cancellationToken);
                 foreach (var row in page.Rows)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     await importer.StartRowAsync(cancellationToken);
                     await importer.WriteAsync(date, NpgsqlDbType.Date, cancellationToken);
-                    await importer.WriteAsync(++rowCount, NpgsqlDbType.Bigint, cancellationToken);
-                    await importer.WriteAsync(loadedAt, NpgsqlDbType.TimestampTz, cancellationToken);
                     for (int i = 0; i < mapping.Columns.Count; i++)
                     {
                         var sourceColumn = AlmaTableMapping.SourceColumnId(i);
@@ -66,6 +63,7 @@ public sealed class PostgresAlmaReportStore : IAlmaReportStore, IAsyncDisposable
                         if (value is null) await importer.WriteNullAsync(cancellationToken);
                         else await importer.WriteAsync(value, mapping.Columns[i].DbType, cancellationToken);
                     }
+                    rowCount++;
                 }
                 await importer.CompleteAsync(cancellationToken);
                 pageCount++;
