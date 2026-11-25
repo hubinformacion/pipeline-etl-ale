@@ -36,7 +36,8 @@ public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCa
                 COPY etl.libcal_bookings (extraction_date, row_number, loaded_at,
                     source_row_id, booking_id, category_id, booking_category, campus_id, booking_campus,
                     starts_at, ends_at, user_email, user_name, user_lastname, booking_resource,
-                    booking_status, booking_confirmation, booking_phone, booking_participant_2_email, booking_participant_3_email)
+                    booking_status, booking_confirmation, booking_phone, booking_participant_2_email, booking_participant_3_email,
+                    booking_note)
                 FROM STDIN (FORMAT BINARY)
                 """, cancellationToken))
             {
@@ -55,7 +56,7 @@ public sealed class PostgresLibCalBookingStore(string connectionString) : ILibCa
                     await importer.WriteAsync(booking.EndsAt.UtcDateTime, NpgsqlDbType.TimestampTz, cancellationToken);
                     foreach (var value in new[] { booking.UserEmail, booking.UserName, booking.UserLastname,
                                  booking.Resource, booking.Status, booking.Confirmation, booking.Phone,
-                                 booking.Participant2Email, booking.Participant3Email })
+                                 booking.Participant2Email, booking.Participant3Email, booking.Note })
                     {
                         if (value is null) await importer.WriteNullAsync(cancellationToken);
                         else await importer.WriteAsync(value, NpgsqlDbType.Text, cancellationToken);

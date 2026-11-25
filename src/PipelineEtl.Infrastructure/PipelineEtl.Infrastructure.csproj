@@ -15,13 +15,6 @@
     <PackageReference Include="Npgsql" Version="10.0.3" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Persistence/PostgreSql/001_alma_reports.sql" />
-    <EmbeddedResource Include="Persistence/PostgreSql/002_elogim_sessions.sql" />
-    <EmbeddedResource Include="Persistence/PostgreSql/003_libcal_bookings.sql" />
-    <EmbeddedResource Include="Persistence/PostgreSql/005_libcal_canonical_columns.sql" />
-    <EmbeddedResource Include="Persistence/PostgreSql/006_libcal_report_fields.sql" />
-    <EmbeddedResource Include="Persistence/PostgreSql/007_libcal_remove_month_columns.sql" />
-    <EmbeddedResource Include="Persistence/PostgreSql/008_alma_remove_source_column0.sql" />
-    <EmbeddedResource Include="Persistence/PostgreSql/009_load_status.sql" />
+    <EmbeddedResource Include="Persistence/PostgreSql/schema.sql" />
   </ItemGroup>
 </Project>

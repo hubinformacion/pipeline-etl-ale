@@ -38,7 +38,8 @@ public sealed class LibCalClient(
                 if (!fields.TryGetValue(property.Name, out var types))
                     fields[property.Name] = types = [];
                 types.Add(property.Value.ValueKind.ToString());
-                if (property.Value.ValueKind == JsonValueKind.Number ||
+                if ((property.Name == "internal_notes" && ReadLatestInternalNote(row) is not null) ||
+                    property.Value.ValueKind == JsonValueKind.Number ||
                     (property.Value.ValueKind == JsonValueKind.String &&
                      !string.IsNullOrWhiteSpace(property.Value.GetString())))
                     nonBlankCounts[property.Name] = nonBlankCounts.GetValueOrDefault(property.Name) + 1;
@@ -94,7 +95,7 @@ public sealed class LibCalClient(
     {
         var query = $"lid={Uri.EscapeDataString(category.LocationId)}&cid={Uri.EscapeDataString(category.Id)}" +
             $"&date={date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}&days=0&limit={limit}&page={page}" +
-            "&form_answers=1&check_in_status=1&include_cancel=1&include_tentative=1&include_denied=1";
+            "&form_answers=1&check_in_status=1&include_cancel=1&include_tentative=1&include_denied=1&internal_notes=true";
         for (int attempt = 0; attempt < 2; attempt++)
         {
             var token = await GetTokenAsync(cancellationToken);
@@ -184,7 +185,34 @@ public sealed class LibCalClient(
             NormalizeAttendance(ReadText(row, "check_in_status")),
             ReadAnswer(row, "q25458"),
             groupBooking ? ReadAnswer(row, "q25459") : null,
-            groupBooking ? ReadAnswer(row, "q25460") : null);
+            groupBooking ? ReadAnswer(row, "q25460") : null,
+            ReadLatestInternalNote(row));
+    }
+
+    private static string? ReadLatestInternalNote(JsonElement row)
+    {
+        if (!row.TryGetProperty("internal_notes", out var notes) || notes.ValueKind == JsonValueKind.Null)
+            return null;
+        if (notes.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("LibCal: internal_notes debe ser una lista.");
+
+        string? latestText = null;
+        var latestCreated = DateTimeOffset.MinValue;
+        foreach (var note in notes.EnumerateArray())
+        {
+            if (note.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException("LibCal: formato inesperado de nota interna.");
+            var text = ReadText(note, "note");
+            if (string.IsNullOrWhiteSpace(text)) continue;
+            var created = ReadText(note, "created");
+            if (!DateTimeOffset.TryParse(created, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var instant))
+                throw new InvalidOperationException("LibCal: fecha de nota interna inválida.");
+            if (instant < latestCreated) continue;
+            // When timestamps tie, use the last note in the response.
+            latestCreated = instant;
+            latestText = text;
+        }
+        return latestText;
     }
 
     private static string? NormalizeStatus(string? value)

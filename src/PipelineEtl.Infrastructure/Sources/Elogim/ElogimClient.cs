@@ -99,7 +99,7 @@ public sealed class ElogimClient : IElogimClient
     }
 
     private MySqlCommand CreateCommand(MySqlConnection connection, string condition) => new($"""
-        SELECT fecha_sesion, id_est, identificacion, bd,
+        SELECT fecha_sesion, id_est AS user_email, identificacion, bd,
             CASE tipo_consulta
                 WHEN 'pdf' THEN 'Descarga'
                 WHEN 'busqueda' THEN 'Búsqueda'

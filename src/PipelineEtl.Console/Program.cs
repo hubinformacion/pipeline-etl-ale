@@ -126,6 +126,8 @@ try
                     f.Name.Skip(1).All(char.IsAsciiDigit));
                 foreach (var question in questions)
                     Console.WriteLine($"  {question.Name}: {question.NonBlankCount}/{sample.SampleRowCount} con respuesta.");
+                var notes = sample.Fields.FirstOrDefault(f => f.Name == "internal_notes");
+                Console.WriteLine($"  Notas internas: {notes?.NonBlankCount ?? 0}/{sample.SampleRowCount} reservas con nota.");
                 foreach (var field in sample.Fields)
                 {
                     if (!allFields.TryGetValue(field.Name, out var types)) allFields[field.Name] = types = [];
