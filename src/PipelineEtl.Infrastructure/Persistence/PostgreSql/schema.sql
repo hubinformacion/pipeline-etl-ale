@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS etl.elogim_sessions (
 
 CREATE TABLE IF NOT EXISTS etl.libcal_bookings (
     extraction_date date NOT NULL,
-    source_row_id text NOT NULL,
+    source_row_id text,
     booking_id text NOT NULL,
     category_id text NOT NULL,
     booking_category text NOT NULL,

@@ -19,6 +19,7 @@ if (args is ["--help"])
     Console.WriteLine("Inspección Elogim: --inspect-elogim (requiere ELOGIM_CONNECTION_STRING; solo nombres y tipos).");
     Console.WriteLine("LibCal: --inspect-libcal o --extract-libcal [--date YYYY-MM-DD] (D, reservas de uso; sin persistencia).");
     Console.WriteLine("Validar exportación histórica: --inspect-libcal-csv RUTA (horarios de Lima; sin persistencia).");
+    Console.WriteLine("Importar histórico de LibCal: --load-libcal-csv CARPETA DESDE HASTA (fechas YYYY-MM-DD; solo días faltantes).");
     Console.WriteLine("Cargar LibCal: --load-libcal [--date YYYY-MM-DD] (foto completa D; solo admite hoy en Perú).");
     Console.WriteLine("Sin fecha: hoy en America/Lima. Sin modo de extracción o carga: solo calcula las fechas.");
     return 0;
@@ -32,6 +33,12 @@ try
     if (args is ["--inspect-libcal-csv", var path])
     {
         InspectLibCalCsv(path, cancellation.Token);
+        return 0;
+    }
+
+    if (args is ["--load-libcal-csv", var directory, var first, var last])
+    {
+        await LoadLibCalCsvAsync(directory, first, last, cancellation.Token);
         return 0;
     }
 
@@ -311,4 +318,30 @@ static void InspectLibCalCsv(string path, CancellationToken cancellationToken)
     Console.WriteLine($"Total: {totals.Sum(c => c.Rows)} filas; {bookingCodes.Count} códigos de reserva distintos.");
     Console.WriteLine($"Confirmadas: {totals.Sum(c => c.Confirmed)}; canceladas: {totals.Sum(c => c.Cancelled)}; asistió: {totals.Sum(c => c.Attended)}.");
     Console.WriteLine($"Con teléfono: {totals.Sum(c => c.Phone)}; participante 2: {totals.Sum(c => c.Participant2)}; participante 3: {totals.Sum(c => c.Participant3)}; con nota: {totals.Sum(c => c.Note)}.");
+}
+
+static async Task LoadLibCalCsvAsync(string directory, string first, string last, CancellationToken cancellationToken)
+{
+    if (!DateOnly.TryParseExact(first, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var firstDay) ||
+        !DateOnly.TryParseExact(last, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var lastDay) ||
+        firstDay > lastDay || lastDay >= ExtractionPlanner.Today(DateTimeOffset.UtcNow))
+        throw new ArgumentException("LibCal histórico: indica fechas YYYY-MM-DD en orden y anteriores a hoy en Lima.");
+
+    try
+    {
+        var files = Directory.GetFiles(directory, "*.csv").Order(StringComparer.Ordinal).ToArray();
+        if (files.Length == 0)
+            throw new InvalidOperationException("LibCal histórico: la carpeta no contiene archivos CSV.");
+
+        var categories = LoadLibCalCategories();
+        var rows = files.SelectMany(file => LibCalCsvReader.Read(file, categories, cancellationToken));
+        await using var store = new PostgresLibCalBookingStore(GetPostgresConnectionString());
+        var result = await store.ImportMissingDaysAsync(firstDay, lastDay, rows, cancellationToken);
+        Console.WriteLine($"LibCal histórico: {files.Length} archivos del {firstDay:yyyy-MM-dd} al {lastDay:yyyy-MM-dd}.");
+        Console.WriteLine($"Filas insertadas: {result.InsertedRows}; días incorporados: {result.InsertedDays}; días conservados: {result.ProtectedDays}.");
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        throw new InvalidOperationException("LibCal histórico: no se pudo leer la carpeta o uno de sus CSV.");
+    }
 }
