@@ -32,6 +32,7 @@ jobs:
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       DOTNET_NOLOGO: '1'
+      ETL_APP: src/PipelineEtl.Console/bin/Release/net10.0/PipelineEtl.Console.dll
     steps:
       - name: Fijar fecha y fuentes de la ejecución
         id: plan
@@ -88,8 +89,7 @@ jobs:
             echo '::error::LibCal solo se puede cargar para hoy en Lima. Para fechas históricas, selecciona alma o elogim.'
             exit 1
           fi
-          app=src/PipelineEtl.Console/bin/Release/net10.0/PipelineEtl.Console.dll
-          timeout --kill-after=15s 10m dotnet "$app" --load-libcal --date "$REFERENCE_DATE"
+          timeout --kill-after=15s 10m dotnet "$ETL_APP" --load-libcal --date "$REFERENCE_DATE"
 
       - name: Cargar Alma (Loans y Renewals)
         id: alma
@@ -104,8 +104,7 @@ jobs:
             echo 'Falta configurar ALMA_API_KEY o NEON_CONNECTION_STRING.' >&2
             exit 1
           fi
-          dotnet run --project src/PipelineEtl.Console/PipelineEtl.Console.csproj \
-            --configuration Release --no-build -- --load-alma --date "$REFERENCE_DATE"
+          timeout --kill-after=15s 7m dotnet "$ETL_APP" --load-alma --date "$REFERENCE_DATE"
 
       - name: Cargar Elogim
         id: elogim
@@ -120,8 +119,7 @@ jobs:
             echo 'Falta configurar ELOGIM_CONNECTION_STRING o NEON_CONNECTION_STRING.' >&2
             exit 1
           fi
-          dotnet run --project src/PipelineEtl.Console/PipelineEtl.Console.csproj \
-            --configuration Release --no-build -- --load-elogim --date "$REFERENCE_DATE"
+          timeout --kill-after=15s 7m dotnet "$ETL_APP" --load-elogim --date "$REFERENCE_DATE"
 
       - name: Resumen por fuente
         if: ${{ !cancelled() }}

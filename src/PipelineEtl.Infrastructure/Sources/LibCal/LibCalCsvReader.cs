@@ -41,7 +41,6 @@ public static class LibCalCsvReader
         var firstName = Column("Nombre");
         var lastName = Column("Apellido");
         var email = Column("Correo electrónico");
-        var phone = Column("Número de teléfono");
         var fromDate = Column("Desde la fecha");
         var fromTime = Column("De vez en cuando");
         var toDate = Column("Hasta la fecha");
@@ -123,7 +122,7 @@ public static class LibCalCsvReader
                 Value(fields[email]), Value(fields[firstName]), Value(fields[lastName]),
                 Value(fields[space]) ?? throw InvalidRow(line, "falta el recurso"),
                 bookingStatus, confirmation,
-                answers.GetValueOrDefault("Número de celular") ?? Value(fields[phone]),
+                answers.GetValueOrDefault("Número de celular"),
                 groupSpace ? answers.GetValueOrDefault("Correo del integrante 2") : null,
                 groupSpace ? answers.GetValueOrDefault("Correo del integrante 3") : null,
                 latestNote));
