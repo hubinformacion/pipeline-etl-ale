@@ -58,9 +58,17 @@ public static class LibCalCsvReader
             if (fields.Length < formStart)
                 throw InvalidRow(line, "faltan columnas de la reserva");
 
+            var campusName = fields[location].Trim();
+            var exportedCategory = fields[categoryName].Trim();
+            // En Cusco e Instituto el export usa el nombre original de la categoría.
+            if (exportedCategory.Equals("Computadoras", StringComparison.OrdinalIgnoreCase) &&
+                (campusName.Equals("Campus Cusco", StringComparison.OrdinalIgnoreCase) ||
+                 campusName.Equals("Campus Instituto", StringComparison.OrdinalIgnoreCase)))
+                exportedCategory = "Computadoras y laptops";
+
             var matches = categories.Where(c =>
-                string.Equals(c.LocationName, fields[location].Trim(), StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(c.Name, fields[categoryName].Trim(), StringComparison.OrdinalIgnoreCase));
+                string.Equals(c.LocationName, campusName, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(c.Name, exportedCategory, StringComparison.OrdinalIgnoreCase));
             var category = matches.SingleOrDefault()
                 ?? throw InvalidRow(line, "el campus o la categoría no figuran en el catálogo");
 
