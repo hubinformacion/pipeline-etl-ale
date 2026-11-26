@@ -18,6 +18,7 @@ if (args is ["--help"])
     Console.WriteLine("Cargar Elogim en PostgreSQL: --load-elogim [--date YYYY-MM-DD] (reemplaza D−1 en transacción).");
     Console.WriteLine("Inspección Elogim: --inspect-elogim (requiere ELOGIM_CONNECTION_STRING; solo nombres y tipos).");
     Console.WriteLine("LibCal: --inspect-libcal o --extract-libcal [--date YYYY-MM-DD] (D, reservas de uso; sin persistencia).");
+    Console.WriteLine("Validar exportación histórica: --inspect-libcal-csv RUTA (horarios de Lima; sin persistencia).");
     Console.WriteLine("Cargar LibCal: --load-libcal [--date YYYY-MM-DD] (foto completa D; solo admite hoy en Perú).");
     Console.WriteLine("Sin fecha: hoy en America/Lima. Sin modo de extracción o carga: solo calcula las fechas.");
     return 0;
@@ -28,6 +29,12 @@ Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
 
 try
 {
+    if (args is ["--inspect-libcal-csv", var path])
+    {
+        InspectLibCalCsv(path, cancellation.Token);
+        return 0;
+    }
+
     if (args is ["--init-db"])
     {
         await using var database = new PostgresDatabase(GetPostgresConnectionString());
@@ -265,4 +272,43 @@ static IReadOnlyList<LibCalCategory> LoadLibCalCategories()
     {
         throw new InvalidOperationException("No se pudo leer libcal.categories.json; verifica el archivo de configuración.");
     }
+}
+
+static void InspectLibCalCsv(string path, CancellationToken cancellationToken)
+{
+    var counts = new Dictionary<(DateOnly Day, LibCalCategory Category),
+        (int Rows, int Confirmed, int Cancelled, int Attended, int Phone, int Participant2, int Participant3, int Note)>();
+    var bookingCodes = new HashSet<string>(StringComparer.Ordinal);
+    try
+    {
+        foreach (var (category, booking) in LibCalCsvReader.Read(path, LoadLibCalCategories(), cancellationToken))
+        {
+            var key = (DateOnly.FromDateTime(booking.StartsAt.DateTime), category);
+            var count = counts.GetValueOrDefault(key);
+            count.Rows++;
+            if (booking.Status == "Confirmado") count.Confirmed++;
+            if (booking.Status == "Cancelado") count.Cancelled++;
+            if (booking.Confirmation == "Asistió") count.Attended++;
+            if (booking.Phone is not null) count.Phone++;
+            if (booking.Participant2Email is not null) count.Participant2++;
+            if (booking.Participant3Email is not null) count.Participant3++;
+            if (booking.Note is not null) count.Note++;
+            counts[key] = count;
+            bookingCodes.Add(booking.BookingId);
+        }
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        throw new InvalidOperationException("LibCal CSV: no se pudo leer el archivo.");
+    }
+
+    Console.WriteLine("LibCal CSV: conteos por fecha de inicio (America/Lima). Sin persistencia.");
+    foreach (var (key, count) in counts.OrderBy(entry => entry.Key.Day)
+                 .ThenBy(entry => entry.Key.Category.LocationName).ThenBy(entry => entry.Key.Category.Name))
+        Console.WriteLine($"{key.Day:yyyy-MM-dd} | {key.Category.LocationName} | {key.Category.Name}: {count.Rows} filas.");
+
+    var totals = counts.Values;
+    Console.WriteLine($"Total: {totals.Sum(c => c.Rows)} filas; {bookingCodes.Count} códigos de reserva distintos.");
+    Console.WriteLine($"Confirmadas: {totals.Sum(c => c.Confirmed)}; canceladas: {totals.Sum(c => c.Cancelled)}; asistió: {totals.Sum(c => c.Attended)}.");
+    Console.WriteLine($"Con teléfono: {totals.Sum(c => c.Phone)}; participante 2: {totals.Sum(c => c.Participant2)}; participante 3: {totals.Sum(c => c.Participant3)}; con nota: {totals.Sum(c => c.Note)}.");
 }

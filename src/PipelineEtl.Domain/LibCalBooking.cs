@@ -4,7 +4,7 @@ public sealed record LibCalCategory(
     string Id, string Name, string LocationId, string LocationName);
 
 public sealed record LibCalBooking(
-    string RowId, string BookingId, DateTimeOffset StartsAt, DateTimeOffset EndsAt,
+    string? RowId, string BookingId, DateTimeOffset StartsAt, DateTimeOffset EndsAt,
     string? UserEmail, string? UserName, string? UserLastname, string? Resource,
     string? Status, string? Confirmation, string? Phone,
     string? Participant2Email, string? Participant3Email, string? Note);
